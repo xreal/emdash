@@ -74,7 +74,8 @@ not send your code or chats to Emdash servers.
 Agent CLIs may send code, prompts, and context to their own providers. Their data
 handling depends on the provider you choose.
 
-Telemetry is optional and can be disabled in Settings or by launching with:
+Telemetry is off by default. It can be enabled in Settings, or hard-disabled for the
+process by launching with:
 
 ```bash
 TELEMETRY_ENABLED=false

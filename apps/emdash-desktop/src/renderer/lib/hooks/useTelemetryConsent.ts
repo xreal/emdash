@@ -9,7 +9,7 @@ type TelemetryState = {
 };
 
 const initialState: TelemetryState = {
-  prefEnabled: true,
+  prefEnabled: false,
   envDisabled: false,
   hasKeyAndHost: true,
   loading: true,

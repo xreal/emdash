@@ -291,8 +291,8 @@ pnpm run test
   safe storage; SSH credentials are managed through SSH services and OS-backed storage.
 - Release secrets live in GitHub Actions secrets, including PostHog, Cloudflare R2,
   Apple signing/notarization, Azure Trusted Signing, and Cachix credentials.
-- Telemetry must remain optional; users can disable it with `TELEMETRY_ENABLED=false`
-  or in app settings.
+- Telemetry is off by default and must remain optional; users can enable it in app
+  settings, or hard-disable it with `TELEMETRY_ENABLED=false`.
 - File logging must preserve redaction of common secret patterns.
 - PTY environment passthrough must use the allowlist in `src/main/core/pty/pty-env.ts`.
 - Treat ACP process spawning, SSH command construction, shell escaping, PTY spawning,

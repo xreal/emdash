@@ -3,6 +3,7 @@ import {
   type IntegrationAuthDescriptor,
 } from '@emdash/plugins/integrations';
 import { issuesPluginRegistry } from '@emdash/plugins/issues';
+import { isIntegrationEnabled } from '@shared/integration-allowlist';
 import type { IssueProviderCapabilities } from '@shared/issue-providers';
 
 function issueCapabilities(integrationId: string): IssueProviderCapabilities {
@@ -44,15 +45,18 @@ function disconnectCredentialLabel(auth: IntegrationAuthDescriptor): string | un
 }
 
 export function buildIntegrationListPayload() {
-  return integrationPluginRegistry.getAll().map((plugin) => ({
-    id: plugin.metadata.id,
-    name: plugin.metadata.name,
-    description: plugin.metadata.description,
-    websiteUrl: plugin.metadata.websiteUrl,
-    features: features(plugin.metadata.id),
-    disconnectCredentialLabel: disconnectCredentialLabel(plugin.capabilities.auth),
-    capabilities: issueCapabilities(plugin.metadata.id),
-    auth: plugin.capabilities.auth,
-    icon: plugin.assets.icon,
-  }));
+  return integrationPluginRegistry
+    .getAll()
+    .filter((plugin) => isIntegrationEnabled(plugin.metadata.id))
+    .map((plugin) => ({
+      id: plugin.metadata.id,
+      name: plugin.metadata.name,
+      description: plugin.metadata.description,
+      websiteUrl: plugin.metadata.websiteUrl,
+      features: features(plugin.metadata.id),
+      disconnectCredentialLabel: disconnectCredentialLabel(plugin.capabilities.auth),
+      capabilities: issueCapabilities(plugin.metadata.id),
+      auth: plugin.capabilities.auth,
+      icon: plugin.assets.icon,
+    }));
 }

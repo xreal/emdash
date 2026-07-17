@@ -353,7 +353,8 @@ class TelemetryService implements IInitializable, IDisposable {
       void this.kv.set('instanceId', this.instanceId);
     }
 
-    this.userOptOut = storedEnabled === 'false' ? true : undefined;
+    // Default off: only an explicit stored "true" opts the user in.
+    this.userOptOut = storedEnabled === 'true' ? false : true;
     this.lastActiveDate = storedActiveDate ?? undefined;
 
     // Detect unclean exit from the previous session: if we have a recorded session ID
