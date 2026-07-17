@@ -338,6 +338,8 @@ pnpm run test
 - Keep renderer-main calls on typed RPC and typed events. The preload bridge should stay
   small; add direct `window.electronAPI` surface only when an Electron/browser primitive
   cannot fit the RPC/event path.
+- Electron interactive UI must use `[-webkit-app-region:no-drag]` when it can overlap a draggable
+  region. `DialogContent` already applies this; preserve it when changing the shared dialog.
 - Access task and project MobX stores through selectors and task view hooks:
   `getTaskStore`, `asProvisioned`, `taskViewKind`, `getTaskManagerStore`,
   `getProjectStore`, `asMounted`, `useTaskViewKind`, `useWorkspace`,
