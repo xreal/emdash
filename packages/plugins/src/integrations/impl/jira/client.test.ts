@@ -4,13 +4,20 @@ import {
   fetchJiraBoardConfiguration,
   fetchJiraBoardIssues,
   fetchJiraBoards,
+  fetchJiraIssueDetail,
+  fetchJiraIssueTransitions,
   fetchJiraSprints,
+  executeJiraIssueTransition,
   getJiraAccountId,
 } from './client';
-import type { JiraAgileClient } from './types';
+import type { JiraAgileClient, JiraClient } from './types';
 
 function agileClient(board: Record<string, unknown>): Pick<JiraAgileClient, 'board'> {
   return { board } as unknown as Pick<JiraAgileClient, 'board'>;
+}
+
+function jiraClient(issues: Record<string, unknown>): Pick<JiraClient, 'issues'> {
+  return { issues } as unknown as Pick<JiraClient, 'issues'>;
 }
 
 describe('fetchJiraBoards', () => {
@@ -338,5 +345,185 @@ describe('fetchJiraBoardIssues', () => {
       fields: ['summary', 'status', 'assignee', 'issuetype', 'priority', 'updated'],
     });
     expect(getIssuesForBoard).not.toHaveBeenCalled();
+  });
+});
+
+describe('fetchJiraIssueDetail', () => {
+  it('requests bounded fields and maps rich issue metadata defensively', async () => {
+    const getIssue = vi.fn(async () => ({
+      id: '10001',
+      key: 'PLAT-7',
+      fields: {
+        summary: 'Ship the board',
+        description: {
+          type: 'doc',
+          content: [
+            { type: 'paragraph', content: [{ type: 'text', text: 'Developer context.' }] },
+            {
+              type: 'bulletList',
+              content: [
+                {
+                  type: 'listItem',
+                  content: [{ type: 'paragraph', content: [{ type: 'text', text: 'First item' }] }],
+                },
+                {
+                  type: 'listItem',
+                  content: [
+                    { type: 'paragraph', content: [{ type: 'text', text: 'Second item' }] },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        status: { name: 'In Progress', statusCategory: { name: 'In Progress' } },
+        assignee: { displayName: 'Ada Lovelace' },
+        reporter: { displayName: 'Grace Hopper' },
+        issuetype: { name: 'Story' },
+        priority: { name: 'High' },
+        project: { key: 'PLAT', name: 'Platform' },
+        parent: { key: 'PLAT-1', fields: { summary: 'Board epic' } },
+        labels: ['frontend', 'frontend', 'developer-experience'],
+        components: [{ name: 'Desktop' }, { name: 'Jira' }, {}],
+        resolution: { name: 'Done' },
+        created: '2026-07-10T10:00:00.000Z',
+        updated: '2026-07-17T10:00:00.000Z',
+        duedate: '2026-07-31',
+        resolutiondate: '2026-07-18T10:00:00.000Z',
+      },
+    }));
+
+    await expect(
+      fetchJiraIssueDetail(jiraClient({ getIssue }), 'https://example.atlassian.net/', 'PLAT-7')
+    ).resolves.toEqual({
+      id: '10001',
+      key: 'PLAT-7',
+      summary: 'Ship the board',
+      description: 'Developer context.\n\n- First item\n- Second item',
+      statusName: 'In Progress',
+      statusCategoryName: 'In Progress',
+      assigneeName: 'Ada Lovelace',
+      reporterName: 'Grace Hopper',
+      issueTypeName: 'Story',
+      priorityName: 'High',
+      projectKey: 'PLAT',
+      projectName: 'Platform',
+      parentKey: 'PLAT-1',
+      parentSummary: 'Board epic',
+      labels: ['frontend', 'developer-experience'],
+      components: ['Desktop', 'Jira'],
+      resolutionName: 'Done',
+      createdAt: '2026-07-10T10:00:00.000Z',
+      updatedAt: '2026-07-17T10:00:00.000Z',
+      dueDate: '2026-07-31',
+      resolvedAt: '2026-07-18T10:00:00.000Z',
+      url: 'https://example.atlassian.net/browse/PLAT-7',
+    });
+    expect(getIssue).toHaveBeenCalledWith({
+      issueIdOrKey: 'PLAT-7',
+      fields: [
+        'summary',
+        'description',
+        'status',
+        'assignee',
+        'reporter',
+        'issuetype',
+        'priority',
+        'project',
+        'parent',
+        'labels',
+        'components',
+        'resolution',
+        'created',
+        'updated',
+        'duedate',
+        'resolutiondate',
+      ],
+      failFast: false,
+    });
+  });
+
+  it('rejects issue responses without required identity fields', async () => {
+    await expect(
+      fetchJiraIssueDetail(
+        jiraClient({ getIssue: vi.fn(async () => ({ key: 'PLAT-7', fields: {} })) }),
+        'https://example.atlassian.net',
+        'PLAT-7'
+      )
+    ).rejects.toThrow('invalid issue response');
+  });
+});
+
+describe('Jira issue transitions', () => {
+  it('maps available transitions and required fields defensively', async () => {
+    const getTransitions = vi.fn(async () => ({
+      transitions: [
+        {
+          id: '21',
+          name: 'Start Progress',
+          isAvailable: true,
+          to: {
+            id: '3',
+            name: 'In Progress',
+            statusCategory: { name: 'In Progress' },
+          },
+          fields: {},
+        },
+        {
+          id: '31',
+          name: 'Resolve',
+          to: { id: '10002', name: 'Done' },
+          fields: {
+            resolution: { name: 'Resolution', required: true },
+            comment: { name: 'Comment', required: false },
+            customfield_10001: { required: true },
+          },
+        },
+        {
+          id: '41',
+          name: 'Unavailable',
+          isAvailable: false,
+          to: { id: '4', name: 'Blocked' },
+        },
+        { id: 'invalid', name: 'Missing destination' },
+      ],
+    }));
+
+    await expect(
+      fetchJiraIssueTransitions(jiraClient({ getTransitions }), 'PLAT-7')
+    ).resolves.toEqual([
+      {
+        id: '21',
+        name: 'Start Progress',
+        toStatusId: '3',
+        toStatusName: 'In Progress',
+        toStatusCategoryName: 'In Progress',
+        requiredFields: [],
+      },
+      {
+        id: '31',
+        name: 'Resolve',
+        toStatusId: '10002',
+        toStatusName: 'Done',
+        toStatusCategoryName: null,
+        requiredFields: ['Resolution', 'customfield_10001'],
+      },
+    ]);
+    expect(getTransitions).toHaveBeenCalledWith({
+      issueIdOrKey: 'PLAT-7',
+      expand: 'transitions.fields',
+      sortByOpsBarAndStatus: true,
+    });
+  });
+
+  it('executes only the selected transition ID', async () => {
+    const doTransition = vi.fn(async () => undefined);
+
+    await executeJiraIssueTransition(jiraClient({ doTransition }), 'PLAT-7', '21');
+
+    expect(doTransition).toHaveBeenCalledWith({
+      issueIdOrKey: 'PLAT-7',
+      transition: { id: '21' },
+    });
   });
 });

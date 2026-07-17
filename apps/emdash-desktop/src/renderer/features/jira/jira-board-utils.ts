@@ -1,8 +1,11 @@
 import type {
   JiraBoardColumn,
+  JiraBoardColumnWidth,
   JiraBoardIssue,
+  JiraIssueTransition,
   JiraSprintSummary,
 } from '@shared/core/jira/jira-board';
+import type { LinkedIssueTaskSummary } from '@shared/core/tasks/tasks';
 
 export type JiraBoardColumnWithIssues = {
   column: JiraBoardColumn;
@@ -11,6 +14,28 @@ export type JiraBoardColumnWithIssues = {
 
 export const JIRA_UNASSIGNED_FILTER = '__emdash_unassigned__';
 
+const JIRA_DESCRIPTION_EMOJI: Record<string, string> = {
+  ':bug:': '🐛',
+  ':bulb:': '💡',
+  ':check_mark:': '✅',
+  ':construction:': '🚧',
+  ':cross_mark:': '❌',
+  ':eyes:': '👀',
+  ':heavy_check_mark:': '✔️',
+  ':information_source:': 'ℹ️',
+  ':link:': '🔗',
+  ':lock:': '🔒',
+  ':memo:': '📝',
+  ':rocket:': '🚀',
+  ':sparkles:': '✨',
+  ':tada:': '🎉',
+  ':thumbsup:': '👍',
+  ':warning:': '⚠️',
+  ':wave:': '👋',
+  ':white_check_mark:': '✅',
+  ':x:': '❌',
+};
+
 export type JiraIssueFilters = {
   search?: string;
   status?: string;
@@ -18,6 +43,13 @@ export type JiraIssueFilters = {
   issueType?: string;
   priority?: string;
 };
+
+export function normalizeJiraDescriptionForDisplay(description: string): string {
+  return description.replace(/:[a-z0-9]+(?:(?:\\)?_[a-z0-9]+)*:/gi, (shortcode) => {
+    const normalized = shortcode.replaceAll('\\_', '_').toLowerCase();
+    return JIRA_DESCRIPTION_EMOJI[normalized] ?? shortcode;
+  });
+}
 
 export function groupJiraIssuesByColumn(
   columns: JiraBoardColumn[],
@@ -120,4 +152,83 @@ function sprintTimestamp(sprint: JiraSprintSummary): number {
   const value = sprint.completeDate ?? sprint.endDate ?? sprint.startDate;
   const timestamp = value ? Date.parse(value) : Number.NaN;
   return Number.isNaN(timestamp) ? sprint.id : timestamp;
+}
+
+export type LinkedWorkPrimaryAction =
+  | { kind: 'start-task' }
+  | { kind: 'open-task'; task: LinkedIssueTaskSummary }
+  | { kind: 'choose-task'; tasks: LinkedIssueTaskSummary[] };
+
+/** Prefer active linked tasks for primary navigation; archived never block starting another. */
+export function resolveLinkedWorkPrimaryAction(
+  linkedTasks: LinkedIssueTaskSummary[]
+): LinkedWorkPrimaryAction {
+  const active = linkedTasks.filter((task) => task.archivedAt === null);
+  if (active.length === 1) return { kind: 'open-task', task: active[0]! };
+  if (active.length > 1) return { kind: 'choose-task', tasks: active };
+  return { kind: 'start-task' };
+}
+
+export function groupLinkedTasksByProject(
+  tasks: LinkedIssueTaskSummary[]
+): Array<[string, LinkedIssueTaskSummary[]]> {
+  const grouped = new Map<string, LinkedIssueTaskSummary[]>();
+  for (const task of tasks) {
+    const projectTasks = grouped.get(task.projectName) ?? [];
+    projectTasks.push(task);
+    grouped.set(task.projectName, projectTasks);
+  }
+  return [...grouped.entries()];
+}
+
+export function resolveBoardDefaultProjectId(
+  savedDefaultProjectId: string | null | undefined,
+  mountedProjectIds: ReadonlySet<string>
+): { projectId: string | null; isStale: boolean } {
+  if (!savedDefaultProjectId) return { projectId: null, isStale: false };
+  if (mountedProjectIds.has(savedDefaultProjectId)) {
+    return { projectId: savedDefaultProjectId, isStale: false };
+  }
+  return { projectId: null, isStale: true };
+}
+
+export function jiraBoardColumnWidthCss(width: JiraBoardColumnWidth | undefined): string {
+  const widths: Record<JiraBoardColumnWidth, string> = {
+    compact: '17rem',
+    comfortable: '20rem',
+    wide: '24rem',
+  };
+  return `min(${widths[width ?? 'comfortable']}, calc(100vw - 2rem))`;
+}
+
+export function resolveDefaultJiraTransition(
+  columns: JiraBoardColumn[],
+  currentStatusId: string | null,
+  transitions: JiraIssueTransition[]
+): JiraIssueTransition | null {
+  if (!currentStatusId) return null;
+  const currentColumnIndex = columns.findIndex((column) =>
+    column.statusIds.includes(currentStatusId)
+  );
+  const nextColumn = columns[currentColumnIndex + 1];
+  if (!nextColumn) return null;
+
+  return (
+    transitions.find(
+      (transition) =>
+        transition.requiredFields.length === 0 &&
+        nextColumn.statusIds.includes(transition.toStatusId)
+    ) ?? null
+  );
+}
+
+export function resolveStartTaskJiraTransition(
+  currentStatusCategoryName: string | null | undefined,
+  defaultTransition: JiraIssueTransition | null
+): JiraIssueTransition | null {
+  if (currentStatusCategoryName?.trim().toLocaleLowerCase() !== 'to do') return null;
+  if (defaultTransition?.toStatusCategoryName?.trim().toLocaleLowerCase() !== 'in progress') {
+    return null;
+  }
+  return defaultTransition;
 }

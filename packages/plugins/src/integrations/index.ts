@@ -26,9 +26,12 @@ export type {
 export {
   getJiraAccountId,
   getJiraBoardConfiguration,
+  getJiraIssueDetail,
+  getJiraIssueTransitions,
   listJiraBoardIssues,
   listJiraBoardSprints,
   listJiraBoards,
+  transitionJiraIssue,
   type ListJiraBoardIssuesInput,
 } from './impl/jira/client';
 export type {
@@ -36,6 +39,8 @@ export type {
   JiraBoardConfiguration,
   JiraBoardIssue,
   JiraBoardIssuePage,
+  JiraIssueDetail,
+  JiraIssueTransition,
   JiraBoardSummary,
   JiraSprintSummary,
 } from './impl/jira/types';

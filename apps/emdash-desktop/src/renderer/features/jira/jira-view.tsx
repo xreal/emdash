@@ -1,4 +1,4 @@
-import { AlertCircle, Columns3, Link2, Plus } from 'lucide-react';
+import { AlertCircle, Columns3, Link2, Plus, Settings2 } from 'lucide-react';
 import { useEffect, useSyncExternalStore, type ReactNode } from 'react';
 import { useIntegrationsContext } from '@renderer/features/integrations/integrations-provider';
 import { useAppSettingsKey } from '@renderer/features/settings/use-app-settings-key';
@@ -40,6 +40,7 @@ export function JiraTitlebar() {
   const { value: settings } = useAppSettingsKey('jiraWorkspace');
   const { params } = useParams('jira');
   const openBoardPicker = useOpenJiraBoardPicker();
+  const showBoardSettings = useShowModal('jiraBoardSettingsModal');
   const connectionQuery = useJiraConnection();
   const accountId =
     connectionQuery.data?.accountId ??
@@ -61,6 +62,17 @@ export function JiraTitlebar() {
       rightSlot={
         <div className="flex items-center gap-2">
           <div id="jira-titlebar-board-status" className="hidden items-center md:flex" />
+          {board ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Board settings"
+              onClick={() => showBoardSettings({ board })}
+            >
+              <Settings2 className="size-3.5" />
+              <span className="hidden sm:inline">Board settings</span>
+            </Button>
+          ) : null}
           <Button variant="ghost" size="sm" className="mr-1" onClick={openBoardPicker}>
             <Plus className="size-3.5" />
             Add board

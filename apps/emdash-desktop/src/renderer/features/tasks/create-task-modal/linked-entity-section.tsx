@@ -36,7 +36,7 @@ export function LinkedEntitySection({
           <ToggleGroupItem
             className="h-6! min-w-0! rounded-lg! px-2! py-0.5! text-xs"
             value="issue"
-            disabled={!hasAnyIssueIntegration}
+            disabled={!hasAnyIssueIntegration && state.linkedIssue === null}
           >
             Issue
           </ToggleGroupItem>

@@ -5,6 +5,7 @@ import { toIntegrationError } from '../../helpers/error';
 import type { ConnectedIntegrationHostContext } from '../../host';
 import type { IntegrationCredentials } from '../../host';
 import type { IntegrationError } from '../../types';
+import { jiraAdfToMarkdown } from './adf';
 import {
   type JiraClient,
   type JiraAgileClient,
@@ -13,6 +14,8 @@ import {
   type JiraBoardIssuePage,
   type JiraBoardSummary,
   type JiraCredentials,
+  type JiraIssueDetail,
+  type JiraIssueTransition,
   type JiraSprintSummary,
   jiraCredentialsSchema,
   type JiraVerifiedConnection,
@@ -23,6 +26,25 @@ const MAX_BOARD_PAGES = 200;
 const SPRINT_PAGE_SIZE = 50;
 const MAX_SPRINT_PAGES = 200;
 const ISSUE_FIELDS = ['summary', 'status', 'assignee', 'issuetype', 'priority', 'updated'];
+const ISSUE_DETAIL_FIELDS = [
+  'summary',
+  'description',
+  'status',
+  'assignee',
+  'reporter',
+  'issuetype',
+  'priority',
+  'project',
+  'parent',
+  'labels',
+  'components',
+  'resolution',
+  'created',
+  'updated',
+  'duedate',
+  'resolutiondate',
+];
+const JIRA_ISSUE_KEY_PATTERN = /^[A-Za-z][A-Za-z0-9_]*-\d+$/;
 
 export type ListJiraBoardIssuesInput = {
   boardId: number;
@@ -32,6 +54,7 @@ export type ListJiraBoardIssuesInput = {
 };
 
 class InvalidJiraBoardConfigurationError extends Error {}
+class InvalidJiraIssueDetailError extends Error {}
 
 export function readJiraCredentials(
   credentials: IntegrationCredentials
@@ -430,6 +453,192 @@ export async function listJiraBoardIssues(
   }
 }
 
+export async function fetchJiraIssueDetail(
+  client: Pick<JiraClient, 'issues'>,
+  siteUrl: string,
+  issueKey: string
+): Promise<JiraIssueDetail> {
+  const raw = await client.issues.getIssue<unknown>({
+    issueIdOrKey: issueKey,
+    fields: ISSUE_DETAIL_FIELDS,
+    failFast: false,
+  });
+  const detail = mapJiraIssueDetail(raw, siteUrl);
+  if (!detail) throw new InvalidJiraIssueDetailError('Jira returned an invalid issue response.');
+  return detail;
+}
+
+export function mapJiraIssueDetail(raw: unknown, siteUrl: string): JiraIssueDetail | null {
+  if (!isRecord(raw)) return null;
+  const id = nonemptyString(raw.id);
+  const key = nonemptyString(raw.key);
+  const fields = isRecord(raw.fields) ? raw.fields : null;
+  const summary = fields ? nonemptyString(fields.summary) : null;
+  if (!id || !key || !summary || !fields) return null;
+
+  const status = isRecord(fields.status) ? fields.status : null;
+  const statusCategory = status && isRecord(status.statusCategory) ? status.statusCategory : null;
+  const assignee = isRecord(fields.assignee) ? fields.assignee : null;
+  const reporter = isRecord(fields.reporter) ? fields.reporter : null;
+  const issueType = isRecord(fields.issuetype) ? fields.issuetype : null;
+  const priority = isRecord(fields.priority) ? fields.priority : null;
+  const project = isRecord(fields.project) ? fields.project : null;
+  const parent = isRecord(fields.parent) ? fields.parent : null;
+  const parentFields = parent && isRecord(parent.fields) ? parent.fields : null;
+  const resolution = isRecord(fields.resolution) ? fields.resolution : null;
+
+  return {
+    id,
+    key,
+    summary,
+    description: jiraAdfToMarkdown(fields.description),
+    statusName: status ? nonemptyString(status.name) : null,
+    statusCategoryName: statusCategory ? nonemptyString(statusCategory.name) : null,
+    assigneeName: assignee ? nonemptyString(assignee.displayName) : null,
+    reporterName: reporter ? nonemptyString(reporter.displayName) : null,
+    issueTypeName: issueType ? nonemptyString(issueType.name) : null,
+    priorityName: priority ? nonemptyString(priority.name) : null,
+    projectKey: project ? nonemptyString(project.key) : null,
+    projectName: project ? nonemptyString(project.name) : null,
+    parentKey: parent ? nonemptyString(parent.key) : null,
+    parentSummary: parentFields ? nonemptyString(parentFields.summary) : null,
+    labels: stringArray(fields.labels),
+    components: Array.isArray(fields.components)
+      ? fields.components.flatMap((component) => {
+          const name = isRecord(component) ? nonemptyString(component.name) : null;
+          return name ? [name] : [];
+        })
+      : [],
+    resolutionName: resolution ? nonemptyString(resolution.name) : null,
+    createdAt: nonemptyString(fields.created),
+    updatedAt: nonemptyString(fields.updated),
+    dueDate: nonemptyString(fields.duedate),
+    resolvedAt: nonemptyString(fields.resolutiondate),
+    url: `${siteUrl.replace(/\/+$/, '')}/browse/${encodeURIComponent(key)}`,
+  };
+}
+
+export async function getJiraIssueDetail(
+  host: ConnectedIntegrationHostContext,
+  issueKey: string
+): Promise<Result<JiraIssueDetail, IntegrationError>> {
+  const credentials = readJiraCredentials(host.credentials);
+  if (!credentials.success) return err(credentials.error);
+  if (!JIRA_ISSUE_KEY_PATTERN.test(issueKey)) {
+    return err({ type: 'invalid_input', message: 'Jira issue key is invalid.' });
+  }
+
+  try {
+    return ok(
+      await fetchJiraIssueDetail(
+        createJiraClient(credentials.data),
+        credentials.data.siteUrl,
+        issueKey
+      )
+    );
+  } catch (error) {
+    host.log.warn('Jira issue detail loading failed', { error, issueKey });
+    return err(toIntegrationError(error, 'Jira', 'Unable to load Jira issue details.'));
+  }
+}
+
+export async function fetchJiraIssueTransitions(
+  client: Pick<JiraClient, 'issues'>,
+  issueKey: string
+): Promise<JiraIssueTransition[]> {
+  const raw: unknown = await client.issues.getTransitions<unknown>({
+    issueIdOrKey: issueKey,
+    expand: 'transitions.fields',
+    sortByOpsBarAndStatus: true,
+  });
+  if (!isRecord(raw) || !Array.isArray(raw.transitions)) return [];
+
+  return raw.transitions.flatMap((entry) => {
+    if (!isRecord(entry) || entry.isAvailable === false) return [];
+    const id = nonemptyString(entry.id);
+    const name = nonemptyString(entry.name);
+    const to = isRecord(entry.to) ? entry.to : null;
+    const toStatusId = to ? nonemptyString(to.id) : null;
+    const toStatusName = to ? nonemptyString(to.name) : null;
+    if (!id || !name || !toStatusId || !toStatusName) return [];
+
+    const statusCategory = to && isRecord(to.statusCategory) ? to.statusCategory : null;
+    const fields = isRecord(entry.fields) ? entry.fields : {};
+    const requiredFields = Object.entries(fields).flatMap(([fieldId, field]) => {
+      if (!isRecord(field) || field.required !== true) return [];
+      return [nonemptyString(field.name) ?? fieldId];
+    });
+
+    return [
+      {
+        id,
+        name,
+        toStatusId,
+        toStatusName,
+        toStatusCategoryName: statusCategory ? nonemptyString(statusCategory.name) : null,
+        requiredFields,
+      },
+    ];
+  });
+}
+
+export async function getJiraIssueTransitions(
+  host: ConnectedIntegrationHostContext,
+  issueKey: string
+): Promise<Result<JiraIssueTransition[], IntegrationError>> {
+  const credentials = readJiraCredentials(host.credentials);
+  if (!credentials.success) return err(credentials.error);
+  if (!JIRA_ISSUE_KEY_PATTERN.test(issueKey)) {
+    return err({ type: 'invalid_input', message: 'Jira issue key is invalid.' });
+  }
+
+  try {
+    return ok(await fetchJiraIssueTransitions(createJiraClient(credentials.data), issueKey));
+  } catch (error) {
+    host.log.warn('Jira issue transition loading failed', { error, issueKey });
+    return err(toIntegrationError(error, 'Jira', 'Unable to load Jira issue transitions.'));
+  }
+}
+
+export async function transitionJiraIssue(
+  host: ConnectedIntegrationHostContext,
+  issueKey: string,
+  transitionId: string
+): Promise<Result<void, IntegrationError>> {
+  const credentials = readJiraCredentials(host.credentials);
+  if (!credentials.success) return err(credentials.error);
+  if (!JIRA_ISSUE_KEY_PATTERN.test(issueKey)) {
+    return err({ type: 'invalid_input', message: 'Jira issue key is invalid.' });
+  }
+  const normalizedTransitionId = nonemptyString(transitionId);
+  if (!normalizedTransitionId) {
+    return err({ type: 'invalid_input', message: 'Jira transition ID is required.' });
+  }
+
+  try {
+    await executeJiraIssueTransition(
+      createJiraClient(credentials.data),
+      issueKey,
+      normalizedTransitionId
+    );
+    return ok();
+  } catch (error) {
+    host.log.warn('Jira issue transition failed', { error, issueKey, transitionId });
+    return err(toIntegrationError(error, 'Jira', 'Unable to transition the Jira issue.'));
+  }
+}
+
+export async function executeJiraIssueTransition(
+  client: Pick<JiraClient, 'issues'>,
+  issueKey: string,
+  transitionId: string
+): Promise<void> {
+  await client.issues.doTransition({
+    issueIdOrKey: issueKey,
+    transition: { id: transitionId },
+  });
+}
+
 export async function verifyJiraCredentials(
   rawCredentials: IntegrationCredentials
 ): Promise<Result<JiraVerifiedConnection, IntegrationError>> {
@@ -457,6 +666,18 @@ function nonemptyString(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   return trimmed || null;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value.flatMap((entry) => {
+        const text = nonemptyString(entry);
+        return text ? [text] : [];
+      })
+    ),
+  ];
 }
 
 function finiteNumber(value: unknown): number | null {

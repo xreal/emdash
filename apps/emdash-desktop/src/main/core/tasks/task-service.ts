@@ -33,6 +33,7 @@ import { createTask } from './operations/createTask';
 import { deleteTask } from './operations/deleteTask';
 import { getDeletePreflight } from './operations/getDeletePreflight';
 import { getTasks } from './operations/getTasks';
+import { getTasksByLinkedIssueUrls } from './operations/getTasksByLinkedIssueUrls';
 import { renameTask } from './operations/renameTask';
 import { restoreTask } from './operations/restoreTask';
 import { setTaskPinned } from './operations/setTaskPinned';
@@ -240,6 +241,7 @@ export class TaskService implements Hookable<TaskLifecycleHooks> {
   updateTaskStatus = updateTaskStatus;
   setTaskPinned = setTaskPinned;
   getTasks = getTasks;
+  getTasksByLinkedIssueUrls = getTasksByLinkedIssueUrls;
 }
 
 export const taskService = new TaskService();

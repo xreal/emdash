@@ -48,67 +48,239 @@ Validation completed for this slice:
 - `pnpm run build:renderer`
 - Focused Jira plugin and shared-schema tests
 
-### Quick Handover
+The Jira issue-to-Emdash task slice is implemented:
+
+- Added a batched task-domain RPC that matches canonical linked-issue URLs against persisted task
+  rows across all projects without requiring mounted renderer stores.
+- Added persisted project, archived-task, conversation/active-agent, workspace branch, and cached
+  pull-request context to linked-task summaries.
+- Added linked-task counts and primary task context to Jira cards.
+- Added project-grouped linked tasks to the issue inspector with direct navigation for active tasks;
+  archived tasks remain visible.
+- Added a focused database test for canonical URL matching, multiple projects, archived tasks,
+  agents, branches, and pull requests.
+- Allowlisted the isolated `better-sqlite3` install script for its pinned installed version; the
+  focused linked-task database test passes.
+- Extended saved boards with optional `defaultProjectId` (no migration) and schema tests for legacy
+  boards, unknown IDs, uniqueness, the ten-board cap, and preserved order.
+- Added a pure `jiraBoardIssueToLinkedIssue` mapper for board snapshots.
+- Extended `CreateTaskModal` with `initialIssue` and `strategy: 'from-issue'` prefill without a
+  Jira-specific create path.
+- Board default project is board-scoped (not per issue). A first pass put a project picker on the
+  board filter toolbar; product feedback rejected that clutter — settings belong in a dedicated
+  Board Settings surface, not the issue inspector and not permanently in the filter row.
+- Added inspector `Start task`, `Open task`, and project-grouped `Choose task` actions. Start task
+  uses the board default project; missing/stale defaults point the user at board settings.
+- Invalidated `['tasks', 'linked-issue-urls']` after task create/delete/PR update events and after
+  archive, restore, and linked-issue mutation paths.
+
+The Board Settings slice is implemented:
+
+- Added a board-scoped settings modal opened from the Jira titlebar and from the issue inspector when
+  Start task has no valid default project.
+- Moved default Emdash project configuration out of the issue filter row and added explicit missing,
+  stale, no-mounted-project, clear, saving, and error states.
+- Added legacy-compatible compact, comfortable, and wide column-width preferences on each saved
+  board; comfortable preserves the previous width.
+- Applied saved column width to every native board column through the optimistic `jiraWorkspace`
+  settings cache, so changes appear without reloading the board.
+- Added focused schema and renderer utility coverage for legacy settings, invalid width values, stale
+  project resolution, and width application.
+
+The read-only issue inspector enrichment slice is implemented:
+
+- Added an account-scoped, lazy Jira issue-detail RPC so opening the inspector fetches one ticket
+  without expanding every board page payload.
+- Added readable description content, reporter, Jira project, parent, labels, components, created,
+  updated, due, resolution, and resolved metadata with loading, retry, and empty states.
+- Added a conservative Atlassian Document Format to plain-text mapper that preserves paragraphs,
+  lists, line breaks, quotes, code blocks, mentions, emoji text, and card URLs without rendering raw
+  Jira HTML.
+- Included fetched Jira description content in the existing linked-issue snapshot when starting a
+  task, so the coding workflow receives the richer ticket context.
+- Added defensive issue-detail/API mapping coverage and widened the inspector for the richer content.
+
+Validation completed for this slice:
+
+- Focused Jira plugin, schema, task-name, and renderer utility tests: 35 passed
+- Focused Jira lint and formatting checks
+- `pnpm run build:renderer`
+- `pnpm run typecheck`
+
+The lightweight ADF-to-Markdown issue viewer is implemented:
+
+- Replaced the conservative ADF-to-plain-text mapper with a typed, dependency-free Markdown
+  converter at the Jira plugin boundary.
+- Preserved headings, breaks, lists, task lists, blockquotes, text marks, code, links, rules, tables,
+  panels, expands, cards, mentions, and emoji.
+- Added readable media, attachment, unknown-node, malformed-content, and unsafe-URL fallbacks.
+- Kept dollar-prefixed source identifiers literal instead of allowing Markdown math parsing, and
+  resolved common Jira emoji shortcodes from both ADF emoji nodes and plain description text.
+- Rendered Jira descriptions through the existing sanitized `MarkdownRenderer` with raw HTML
+  disabled and compact table/code overflow behavior.
+- Kept the converted Markdown in the existing linked-issue task snapshot.
+- Added focused fixtures for nested lists, marks, links, code, tables, panels, unsupported content,
+  malicious text and URLs, and malformed or empty documents.
+
+Validation completed for this slice:
+
+- Focused Jira ADF and client tests: 15 passed
+- Focused plugin and Jira renderer lint and formatting checks
+- Plugin build
+- `pnpm run build:renderer`
+- `pnpm run typecheck`
+
+The confirmed Jira transition suggestion slice is implemented:
+
+- Added account-scoped RPC operations for fetching and executing valid issue transitions.
+- Added defensive Jira transition mapping and minimal transition writes using only the confirmed
+  transition ID.
+- Added one inspector default for the next native board column, with remaining valid transitions in
+  an overflow menu and explicit confirmation before every write.
+- Starting an Emdash task from a Todo issue offers a confirmed move to the next In Progress status.
+- Kept transitions requiring Jira workflow fields visible but disabled with a path to complete them
+  in Jira.
+- Refreshes issue details, board issues, and available transitions after a successful write without
+  optimistic local state changes.
+- Added focused plugin, RPC, schema, and inspector tests for mapping, confirmation, refresh,
+  permissions, required fields, and failures.
+
+### Implementation Handover: 2026-07-17
 
 Current stopping point:
 
-- The app can connect Jira, discover all accessible native Scrum/Kanban boards, select up to ten,
-  persist them, show them in the global sidebar, and navigate to a board-specific Jira workspace.
-- Saved boards and cached discovery queries are scoped to the normalized Jira site host.
-- Reconnecting or disconnecting Jira invalidates Jira workspace queries.
-- Boards deleted in Jira or hidden by permission changes remain visible as `unavailable` in the
-  picker so the user can remove them.
-- The selected navigation parameter self-heals only after Jira settings and connection identity have
-  loaded, preserving restored board selections.
-- Selected boards now render live native columns and read-only issue cards without fixture data.
-- Scrum boards default to their active sprint and allow selecting active, upcoming, or previous
-  sprints. Boards without an active sprint can still open an upcoming or previous sprint.
-- Kanban boards load issues from the native board filter.
-- Issues with statuses outside the returned board configuration remain visible in an `Other` column.
-- The workspace uses two header rows: the titlebar contains the full project/board path plus live load
-  and refresh status, while the second row contains sprint selection, search, filters, and refresh.
-- Issue pages load in automatic 50-item background chunks. Search and filters apply to all pages loaded
-  so far and expose status, assignee, type, and priority controls.
-- Selecting a card opens a read-only issue inspector with an Open in Jira action.
-- Jira shows a clear unavailable state while offline rather than persisting board snapshots.
+- Jira connection, native Scrum/Kanban board discovery, saved-board navigation, sprint selection,
+  native columns, automatic issue pagination, search, filters, refresh, offline handling, and the
+  issue inspector are implemented without fixture data.
+- Saved boards and cached discovery queries are scoped to the normalized Jira site host. Unavailable
+  saved boards remain removable, and restored navigation waits for settings and connection identity.
+- The board fetches linked Emdash tasks for every loaded Jira issue through one batched task RPC. The
+  query reads persisted task rows across all projects rather than mounted renderer stores.
+- Canonical Jira issue URL is the link identity. Each task still belongs to one Emdash project through
+  `tasks.project_id`, while `tasks.linked_issue` stores its Jira snapshot. Reusing the URL on task rows
+  supports multiple tasks in one or several projects without a join table.
+- Cards show linked-task count, primary project/task, agents, branch, and pull-request presence. The
+  inspector lazily loads full ticket description and metadata, then shows every linked task grouped
+  by project; active tasks navigate directly and archived tasks remain visible.
+- The linked-task RPC is registered under `tasks.getTasksByLinkedIssueUrls`. Its implementation and
+  database test are in `src/main/core/tasks/operations/getTasksByLinkedIssueUrls.ts` and
+  `getTasksByLinkedIssueUrls.db.test.ts`.
+- Boards remember an optional default Emdash project and column width on each saved-board object.
+  Both preferences are configured in the dedicated Board Settings modal.
+- `Start task` opens the existing Create Task modal with a mapped `LinkedIssue` (`provider: 'jira'`).
+  No Jira writes occur. One active linked task offers `Open task`; several active tasks offer a
+  project-grouped chooser; archived links never block starting another task.
+- Linked-task React Query caches invalidate via `wireLinkedTaskCacheInvalidation` and
+  `invalidateLinkedIssueUrlsCache` on create/delete/PR update, archive, restore, and linked-issue
+  updates.
 
-Start the next implementation slice in these files:
+Next big step:
 
-- Existing linked issue schema: `apps/emdash-desktop/src/shared/core/linked-issue.ts`
-- Existing task persistence/query path: `apps/emdash-desktop/src/main/core/tasks/`
-- Jira orchestration and RPC: `apps/emdash-desktop/src/main/core/jira/`
-- Task creation behavior: `apps/emdash-desktop/src/renderer/features/tasks/`
-- Existing renderer linked-task lookup pattern:
-  `apps/emdash-desktop/src/renderer/features/tasks/components/issue-selector/use-linked-issue-urls.ts`
+- **Drag transitions and ranking with optimistic rollback.** Reuse the confirmed transition path,
+  add destination-column transition selection and Jira ranking, and roll back local movement on any
+  write failure.
+
+Completed ADF viewer implementation order:
+
+1. [x] Replace the current ADF-to-plain-text mapper with a typed ADF-to-Markdown converter at the Jira
+   plugin boundary. Do not pass raw ADF or Jira-rendered HTML into the renderer.
+2. [x] Preserve the common Jira description surface: paragraphs, headings, hard breaks, bullet and
+   ordered lists, task lists, blockquotes, strong/emphasis/strike/code marks, fenced code blocks with
+   language, links, mentions, emoji, rules, tables, panels, expands, and inline/block cards.
+3. [x] Render converted descriptions with the existing sanitized `MarkdownRenderer`, matching the
+   inspector's typography and horizontal overflow behavior for tables and code.
+4. [x] Add readable fallbacks for unsupported media, attachments, and unknown ADF nodes instead of
+   dropping surrounding text or rendering unsafe HTML.
+5. [x] Keep the converted Markdown in the existing linked-issue snapshot when starting a task so the
+   coding workflow receives the same readable description shown in the inspector.
+6. [x] Add focused ADF fixtures and tests for nested lists, marks, links, code, tables, panels, unknown
+   nodes, malicious URLs/HTML-like text, and empty documents.
+
+ADF viewer acceptance criteria:
+
+- Jira descriptions retain their useful structure and formatting in the inspector.
+- Rendering adds no Atlaskit dependency, iframe, Jira page embed, or raw HTML path.
+- Malformed or unsupported ADF still produces safe readable output and never crashes the inspector.
+- Task-linked Jira context uses the same converted description shown to the user.
+- No Jira writes are introduced.
+
+Board settings shipped in this slice:
+
+1. **Default Emdash project** — required for Start task; resolve against mounted projects; show a
+   clear stale state when the saved project is missing; never configure this per issue.
+2. **Column width** — control how wide each native column is (the current fixed
+   `min(20rem, calc(100vw-2rem))` cards/columns). Prefer a small set of presets (`compact` /
+   `comfortable` / `wide`) or a numeric width with a sensible min/max; apply to all columns on that
+   board.
+3. **Optional follow-ons in the same modal if cheap:**
+   - Card density (compact vs comfortable vertical spacing / summary line clamp)
+   - Whether empty columns stay visible
+   - Default open behavior for linked work (prefer Start vs Open when one active task exists)
+   - Remember last selected sprint (already partly in view params; may stay navigation-only)
+
+Out of scope for the Board Settings modal:
+
+- Per-issue project overrides
+- Jira field/transition configuration
+- Swimlanes, quick filters, or full Jira board parity
+- Global app Settings page for per-board prefs (modal is enough; keep it board-scoped)
+
+Following steps:
+
+- [x] Confirmed Jira transition suggestions (still no silent transitions)
+- Drag transitions and ranking with optimistic rollback
+- Do not start Issue Copilot until the coding workflow exit criteria are met
+
+Primary implementation entry points:
+
+- Jira workspace validation: `apps/emdash-desktop/src/shared/core/jira/jira-board.ts`
+- Jira workspace schema tests: `apps/emdash-desktop/src/shared/core/jira/jira-board.test.ts`
 - Jira board and inspector: `apps/emdash-desktop/src/renderer/features/jira/jira-board.tsx`
-- Jira workspace settings: `apps/emdash-desktop/src/shared/core/jira/jira-board.ts`
+- Jira titlebar entry for settings: `apps/emdash-desktop/src/renderer/features/jira/jira-view.tsx`
+- Jira ADF conversion: `packages/plugins/src/integrations/impl/jira/adf.ts`
+- Existing sanitized Markdown renderer: `apps/emdash-desktop/src/renderer/lib/ui/markdown-renderer.tsx`
+- Saved setting update pattern: `apps/emdash-desktop/src/renderer/features/jira/add-jira-boards-modal.tsx`
+- Existing project selector: `apps/emdash-desktop/src/renderer/features/tasks/create-task-modal/project-selector.tsx`
+- Create Task modal props/state: `apps/emdash-desktop/src/renderer/features/tasks/create-task-modal/`
+- Modal registration: `apps/emdash-desktop/src/renderer/app/modal-registry.ts`
+- Generic linked issue schema: `apps/emdash-desktop/src/shared/core/linked-issue.ts`
+- Persisted linked-task query: `apps/emdash-desktop/src/main/core/tasks/operations/getTasksByLinkedIssueUrls.ts`
 
-Recommended next vertical slice:
+Guardrails for the next implementer:
 
-1. Add the Jira issue-to-Emdash coding workflow described below. Sidebar board reordering is deferred
-   UI polish and should not block this product-value slice.
+- Board preferences are board-scoped. Do not put default project or column width on the issue
+  inspector as editable controls.
+- Do not permanently park configuration controls in the filter/search row; open a modal instead.
+- Do not create a Jira-specific task creation RPC or bypass `CreateTaskModal` and `TaskManagerStore`.
+- Do not require the target project to have a Jira issue integration configured; the board already
+  supplies a validated Jira issue snapshot.
+- Do not use the mounted-only `use-linked-issue-urls.ts` helper for board-wide linkage. The persisted
+  batched RPC is the source of truth for Jira cards and the inspector.
+- Do not remove archived linked tasks or treat them as a uniqueness constraint.
+- Do not add Jira transitions, comments, field changes, rank changes, or issue creation in the
+  Board Settings slice.
+- Do not persist Jira board snapshots or issue content beyond the existing task-linked snapshot.
 
-### Next Major Slice: Jira Issue To Emdash Task
+### Completed Major Slice: Jira Issue To Emdash Task
 
 Goal: turn the read-only Jira board into an entry point for existing and new coding work without
 adding Jira writes.
 
 Implementation order:
 
-1. Add a main-process query that accepts the canonical URLs of visible Jira issues and returns linked
-   task summaries across all Emdash projects. Query persisted task rows rather than relying on mounted
-   renderer stores.
-2. Show linked task counts and compact task, active-agent, branch, and pull-request context on cards
-   and in the issue inspector. Keep the card readable when several projects contain linked tasks.
-3. Add a persisted board-to-project mapping with an explicit project picker and a fallback picker when
-   the mapped project is unavailable. Use a generated migration only if the mapping requires an
-   independent lifecycle beyond the existing validated Jira workspace setting.
-4. Add `Start task` in the inspector. Reuse existing task creation behavior and attach a canonical
+1. [x] Add a main-process query that accepts the canonical URLs of visible Jira issues and returns
+   linked task summaries across all Emdash projects. Query persisted task rows rather than relying on
+   mounted renderer stores.
+2. [x] Show linked task counts and compact task, active-agent, branch, and pull-request context on
+   cards and in the issue inspector. Keep the card readable when several projects contain linked tasks.
+3. [x] Persist board-to-project mapping as `defaultProjectId` on each saved board (no migration).
+   Wiring and Start task consumption are done; final configuration UX is the Board Settings modal.
+4. [x] Add `Start task` in the inspector. Reuse existing task creation behavior and attach a canonical
    `LinkedIssue` with provider `jira`, URL, key, summary, status, assignee, and update timestamp.
-5. Add `Open task` for one linked task and a project-grouped chooser for multiple linked tasks. Archived
-   tasks remain visible but do not prevent creating another task.
-6. Invalidate or refresh linked-task summaries after task creation, archival, restoration, or linked
-   issue changes.
+5. [x] Add `Open task` for one linked task and a project-grouped chooser for multiple linked tasks.
+   Archived tasks remain visible but do not prevent creating another task.
+6. [x] Invalidate or refresh linked-task summaries after task creation, archival, restoration, or
+   linked issue changes.
 
 Acceptance criteria:
 
@@ -120,16 +292,41 @@ Acceptance criteria:
 - Focused tests cover canonical URL matching, multiple projects, archived tasks, mapping validation,
   task creation payloads, and renderer action selection.
 
+### Next Major Slice: Board Settings Modal
+
+Goal: give each saved Jira board a dedicated, board-level settings surface for Emdash preferences
+that should not live on tickets or permanently in the filter toolbar.
+
+Implementation order:
+
+1. [x] Add a small `Board settings` modal registered in `modal-registry`, opened from the board
+   titlebar/toolbar for the active board only.
+2. [x] Move default Emdash project configuration into that modal. Remove the temporary filter-row
+   project picker. Keep Start task blocked with a clear CTA when the mapping is missing or stale.
+3. [x] Extend the saved-board preference schema with board display prefs starting with column width
+   (presets or constrained numeric width). Default to the current column sizing. Schema tests for
+   legacy boards without the new fields.
+4. [x] Apply column width (and any shipped density prefs) when rendering board columns/cards.
+5. [ ] Optional in the same modal if low cost: card density, hide empty columns, linked-work default
+   action preference.
+6. [x] Focused tests for preference validation, stale project resolution, and column width application.
+
+Acceptance criteria:
+
+- Users configure board project and column width in one board-scoped modal, not per issue.
+- The filter row stays focused on search, sprint, and issue filters.
+- Changing column width updates the visible board without a reload and persists per board.
+- Missing/stale default projects still prevent Start task with a path into Board settings.
+- No Jira writes and no issue-content persistence beyond existing linked-task snapshots.
+
 Known verification constraints in this checkout:
 
 - Focused Jira tests pass.
-- Desktop typechecking currently reports unrelated existing implicit-`any` errors in plugin-backed
-  GitHub/integration files; Jira-focused lint and the renderer production build pass.
+- Desktop typechecking passes after rebuilding the plugin package declarations.
 - The desktop Node test project passed once in full; a later parallel run hit a pre-existing
   `issue-selector` timeout, and that test passed immediately when rerun alone.
-- The repository-wide test command is not clean in this environment because the isolated
-  `better-sqlite3` binding and Playwright browser are not installed. It also reports unrelated
-  existing ACP snapshot/capability failures.
+- The repository-wide test command is not clean in this environment because the Playwright browser
+  is not installed. It also reports unrelated existing ACP snapshot/capability failures.
 - No live Jira account was used, so Agile API integration is covered by typed client behavior and
   mocked pagination tests rather than an end-to-end Jira smoke test.
 
@@ -151,7 +348,8 @@ agent, task, branch, diff, pull request, and check context that Jira does not ha
 - The sidebar lists boards only, not nested sprints.
 - Clicking an issue opens a right-side inspector that can expand into a full issue view.
 - One Jira issue can link to multiple Emdash tasks across multiple projects.
-- Board-to-project mappings use rules and a fallback project chooser.
+- Board-to-project mappings are board-scoped (default Emdash project per saved board), configured in
+  Board Settings, not on individual issues.
 - Jira transitions are suggested or explicitly initiated, never silently inferred.
 - Offline Jira views show a clear disconnected state. Jira writes are not queued.
 - The first milestone is the coding workflow slice, not a complete Jira replacement.
@@ -189,14 +387,18 @@ names and types are persisted so the sidebar remains stable between app sessions
 
 ### Board View
 
-The board titlebar contains:
+The board titlebar / control row contains:
 
 - Board breadcrumb and connection state
 - Active, future, or previous sprint selector for Scrum boards
 - Search and common filters
 - Refresh and data freshness state
-- Create issue action
-- Open in Jira and board settings actions
+- Board settings action (opens a dedicated modal — not inline filter controls)
+- Create issue action (later)
+- Open in Jira
+
+Board Settings is board-scoped and covers Emdash preferences such as default project and column
+width. It is not a per-issue control and should not clutter the filter row.
 
 The board body uses horizontally scrollable native Jira columns. Cards show Jira fields and local
 Emdash development state together:
@@ -477,8 +679,9 @@ lifecycle or querying.
 
 | Entity | Purpose |
 | --- | --- |
-| Jira workspace app setting | Account, remote board ID, display metadata, type, and sidebar order |
-| Board project mappings | Default project and ordered component/label mapping rules |
+| Jira workspace app setting | Account, remote board ID, display metadata, type, sidebar order, and per-board prefs (`defaultProjectId`, column width, density, …) |
+| Board Settings modal | Board-scoped UI for those prefs; not a separate DB entity yet |
+| Board project mappings (later) | Ordered component/label mapping rules if defaults alone are insufficient |
 | Issue Copilot runs | Issue, project, repository revision, provider/model, result, and timestamps |
 | Existing `tasks.linked_issue` | Jira issue snapshot attached to each Emdash task |
 
@@ -523,13 +726,14 @@ Exit criteria:
 
 ### Phase 2: Coding Workflow Slice
 
-- Load task links for visible Jira issues.
-- Show task, agent, branch, and PR badges on cards and in the inspector.
-- Add board-to-project mapping and fallback project selection.
-- Start a task from an issue using existing task creation behavior.
-- Open one or several existing linked tasks.
-- Add confirmed Jira transition suggestions.
-- Add drag transitions and ranking with optimistic rollback.
+- [x] Load task links for visible Jira issues.
+- [x] Show task, agent, branch, and PR badges on cards and in the inspector.
+- [x] Persist board default Emdash project and wire Start task to it.
+- [x] Board Settings modal: default project and column width.
+- [x] Start a task from an issue using existing task creation behavior.
+- [x] Open one or several existing linked tasks through explicit primary actions.
+- [x] Add confirmed Jira transition suggestions.
+- [ ] Add drag transitions and ranking with optimistic rollback.
 
 Exit criteria:
 

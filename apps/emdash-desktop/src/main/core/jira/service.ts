@@ -1,21 +1,29 @@
 import {
   getJiraAccountId,
   getJiraBoardConfiguration,
+  getJiraIssueDetail,
+  getJiraIssueTransitions,
   listJiraBoardIssues,
   listJiraBoardSprints,
   listJiraBoards,
+  transitionJiraIssue,
 } from '@emdash/plugins/integrations';
 import { err, ok } from '@emdash/shared';
 import { integrationCredentialStore } from '@main/core/integrations/integration-credential-store-instance';
 import { log } from '@main/lib/logger';
 import type {
   GetJiraBoardConfigurationInput,
+  GetJiraIssueDetailInput,
+  GetJiraIssueTransitionsInput,
   JiraBoardConfiguration,
   JiraBoardIssuePage,
   JiraBoardSummary,
+  JiraIssueDetail,
+  JiraIssueTransition,
   JiraSprintSummary,
   ListJiraBoardIssuesInput,
   ListJiraBoardSprintsInput,
+  TransitionJiraIssueInput,
 } from '@shared/core/jira/jira-board';
 
 const jiraLog = log.child({ integration: 'jira', feature: 'boards' });
@@ -83,6 +91,41 @@ export async function listAvailableJiraBoardIssues(input: ListJiraBoardIssuesInp
     }
   );
   return result.success ? ok<JiraBoardIssuePage>(result.data) : result;
+}
+
+export async function getAvailableJiraIssueDetail(input: GetJiraIssueDetailInput) {
+  const credentials = await integrationCredentialStore.get('jira');
+  if (!credentials) return jiraAuthError();
+
+  const accountId = getJiraAccountId(credentials);
+  if (!accountId.success) return accountId;
+  if (accountId.data !== input.accountId) return jiraAccountChangedError();
+
+  const result = await getJiraIssueDetail({ credentials, log: jiraLog }, input.issueKey);
+  return result.success ? ok<JiraIssueDetail>(result.data) : result;
+}
+
+export async function getAvailableJiraIssueTransitions(input: GetJiraIssueTransitionsInput) {
+  const credentials = await integrationCredentialStore.get('jira');
+  if (!credentials) return jiraAuthError();
+
+  const accountId = getJiraAccountId(credentials);
+  if (!accountId.success) return accountId;
+  if (accountId.data !== input.accountId) return jiraAccountChangedError();
+
+  const result = await getJiraIssueTransitions({ credentials, log: jiraLog }, input.issueKey);
+  return result.success ? ok<JiraIssueTransition[]>(result.data) : result;
+}
+
+export async function transitionAvailableJiraIssue(input: TransitionJiraIssueInput) {
+  const credentials = await integrationCredentialStore.get('jira');
+  if (!credentials) return jiraAuthError();
+
+  const accountId = getJiraAccountId(credentials);
+  if (!accountId.success) return accountId;
+  if (accountId.data !== input.accountId) return jiraAccountChangedError();
+
+  return transitionJiraIssue({ credentials, log: jiraLog }, input.issueKey, input.transitionId);
 }
 
 export async function listAvailableJiraBoardSprints(input: ListJiraBoardSprintsInput) {

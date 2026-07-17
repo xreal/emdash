@@ -83,6 +83,40 @@ export type JiraBoardIssuePage = {
   issues: JiraBoardIssue[];
 };
 
+export type JiraIssueDetail = {
+  id: string;
+  key: string;
+  summary: string;
+  description: string | null;
+  statusName: string | null;
+  statusCategoryName: string | null;
+  assigneeName: string | null;
+  reporterName: string | null;
+  issueTypeName: string | null;
+  priorityName: string | null;
+  projectKey: string | null;
+  projectName: string | null;
+  parentKey: string | null;
+  parentSummary: string | null;
+  labels: string[];
+  components: string[];
+  resolutionName: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+  dueDate: string | null;
+  resolvedAt: string | null;
+  url: string;
+};
+
+export type JiraIssueTransition = {
+  id: string;
+  name: string;
+  toStatusId: string;
+  toStatusName: string;
+  toStatusCategoryName: string | null;
+  requiredFields: string[];
+};
+
 function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value);

@@ -23,6 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@renderer/lib/ui/dialog';
+import type { LinkedIssue } from '@shared/core/linked-issue';
 import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
 import { LinkedEntitySection } from './linked-entity-section';
 import { TaskNameField } from './task-name-field';
@@ -54,11 +55,14 @@ export const CreateTaskModal = observer(function CreateTaskModal({
   projectId,
   strategy: initialStrategy = 'from-branch',
   initialPR,
-  onClose,
-}: BaseModalProps & {
+  initialIssue,
+  onSuccess,
+}: BaseModalProps<void> & {
   projectId?: string;
   strategy?: 'from-branch' | 'from-issue' | 'from-pull-request';
   initialPR?: PullRequest;
+  /** Prefill the linked issue (e.g. Start task from a Jira board issue). */
+  initialIssue?: LinkedIssue;
 }) {
   const selectedProjectId = useDefaultProjectId(projectId);
 
@@ -80,7 +84,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
 
   const defaultLinkedType = useMemo((): LinkedType => {
     if (initialStrategy === 'from-pull-request') return 'pr';
-    if (initialStrategy === 'from-issue') return 'issue';
+    if (initialStrategy === 'from-issue' || initialIssue) return 'issue';
     if (hasAnyIssueIntegration) return 'issue';
     if (hasPrSupport) return 'pr';
     return null;
@@ -88,6 +92,8 @@ export const CreateTaskModal = observer(function CreateTaskModal({
   }, []); // computed once on mount
 
   const resolvedInitialPR = initialStrategy === 'from-pull-request' ? initialPR : undefined;
+  const resolvedInitialIssue =
+    initialStrategy === 'from-issue' || initialIssue ? initialIssue : undefined;
   const state = useCreateTaskState(
     selectedProjectId,
     defaultBranch,
@@ -95,7 +101,8 @@ export const CreateTaskModal = observer(function CreateTaskModal({
     currentBranch,
     repositoryWorkspaceId,
     resolvedInitialPR,
-    defaultLinkedType
+    defaultLinkedType,
+    resolvedInitialIssue
   );
 
   const { autoApproveByDefault, includeIssueContextByDefault } = useTaskSettings();
@@ -112,7 +119,7 @@ export const CreateTaskModal = observer(function CreateTaskModal({
     state,
     initialConversation,
     navigate,
-    onClose,
+    onSuccess,
   });
 
   return (

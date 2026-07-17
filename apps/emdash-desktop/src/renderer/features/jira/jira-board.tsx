@@ -1,10 +1,35 @@
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { AlertCircle, ExternalLink, RefreshCw } from 'lucide-react';
+import {
+  AlertCircle,
+  ChevronDown,
+  ExternalLink,
+  GitBranch,
+  GitPullRequest,
+  Link2,
+  RefreshCw,
+} from 'lucide-react';
+import { observer } from 'mobx-react-lite';
 import { useDeferredValue, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
+import {
+  asMounted,
+  getProjectManagerStore,
+} from '@renderer/features/projects/stores/project-selectors';
+import { AgentStatusIndicator } from '@renderer/lib/components/agent-status-indicator';
+import { StackedAgentLogos } from '@renderer/lib/components/stacked-agent-logos';
 import { rpc } from '@renderer/lib/ipc';
-import { useParams } from '@renderer/lib/layout/navigation-provider';
+import { useNavigate, useParams } from '@renderer/lib/layout/navigation-provider';
+import { useShowModal } from '@renderer/lib/modal/modal-provider';
 import { Button } from '@renderer/lib/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
+} from '@renderer/lib/ui/dropdown-menu';
+import { MarkdownRenderer } from '@renderer/lib/ui/markdown-renderer';
 import { RelativeTime } from '@renderer/lib/ui/relative-time';
 import { SearchInput } from '@renderer/lib/ui/search-input';
 import {
@@ -19,24 +44,52 @@ import {
 import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@renderer/lib/ui/sheet';
 import { Spinner } from '@renderer/lib/ui/spinner';
 import type {
+  JiraBoardColumn,
   JiraBoardIssue,
   JiraBoardSummary,
+  JiraIssueDetail,
   JiraSprintSummary,
 } from '@shared/core/jira/jira-board';
+import { jiraBoardIssueToLinkedIssue } from '@shared/core/jira/jira-linked-issue';
+import type { LinkedIssueTaskSummary } from '@shared/core/tasks/tasks';
 import {
   filterJiraIssues,
   groupJiraIssuesByColumn,
+  groupLinkedTasksByProject,
+  jiraBoardColumnWidthCss,
   JIRA_UNASSIGNED_FILTER,
+  normalizeJiraDescriptionForDisplay,
+  resolveBoardDefaultProjectId,
+  resolveDefaultJiraTransition,
   resolveJiraSprintId,
+  resolveLinkedWorkPrimaryAction,
+  resolveStartTaskJiraTransition,
   sortJiraSprints,
 } from './jira-board-utils';
+import {
+  JiraTransitionSuggestions,
+  useConfirmedJiraTransition,
+  useJiraIssueTransitions,
+} from './jira-transition-suggestions';
 
 const ISSUE_PAGE_SIZE = 50;
 const ALL_FILTER_VALUE = '__emdash_all__';
 
-export function JiraBoard({ board }: { board: JiraBoardSummary }) {
+export const JiraBoard = observer(function JiraBoard({ board }: { board: JiraBoardSummary }) {
   const { params, setParams } = useParams('jira');
   const deferredSearch = useDeferredValue(params.search ?? '');
+  const mountedProjects = Array.from(getProjectManagerStore().projects.entries()).flatMap(
+    ([id, store]) => {
+      const mounted = asMounted(store);
+      return mounted ? [{ id, name: mounted.data.name }] : [];
+    }
+  );
+  const mountedProjectIds = new Set(mountedProjects.map((project) => project.id));
+  const boardDefault = resolveBoardDefaultProjectId(board.defaultProjectId, mountedProjectIds);
+  const defaultProjectId = boardDefault.projectId;
+  const defaultProjectName =
+    mountedProjects.find((project) => project.id === defaultProjectId)?.name ?? null;
+
   const configurationQuery = useQuery({
     queryKey: ['jira', 'board', board.accountId, board.id, 'configuration'],
     queryFn: async () => {
@@ -118,6 +171,15 @@ export function JiraBoard({ board }: { board: JiraBoardSummary }) {
     issuePages?.pages.length,
   ]);
 
+  const issues = issuesQuery.data?.pages.flatMap((page) => page.issues) ?? [];
+  const issueUrls = issues.map((issue) => issue.url);
+  const linkedTasksQuery = useQuery({
+    queryKey: ['tasks', 'linked-issue-urls', issueUrls],
+    queryFn: () => rpc.tasks.getTasksByLinkedIssueUrls(issueUrls),
+    enabled: issueUrls.length > 0,
+    staleTime: 15_000,
+  });
+
   if (configurationQuery.isLoading) {
     return <BoardState icon={<Spinner size="sm" />} title="Loading Jira board" />;
   }
@@ -135,7 +197,7 @@ export function JiraBoard({ board }: { board: JiraBoardSummary }) {
 
   if (!configuration) return null;
 
-  const issues = issuesQuery.data?.pages.flatMap((page) => page.issues) ?? [];
+  const linkedTasksByIssueUrl = groupLinkedTasksByIssueUrl(linkedTasksQuery.data ?? []);
   const filteredIssues = filterJiraIssues(issues, {
     search: deferredSearch,
     status: params.status,
@@ -153,17 +215,22 @@ export function JiraBoard({ board }: { board: JiraBoardSummary }) {
   const selectedIssue = issues.find((issue) => issue.key === params.issueKey) ?? null;
   const columns = groupJiraIssuesByColumn(configuration.columns, filteredIssues);
   const isRefreshing =
-    configurationQuery.isFetching || sprintsQuery.isRefetching || issuesQuery.isRefetching;
+    configurationQuery.isFetching ||
+    sprintsQuery.isRefetching ||
+    issuesQuery.isRefetching ||
+    linkedTasksQuery.isRefetching;
   const lastRefreshedAt = Math.max(
     configurationQuery.dataUpdatedAt,
     sprintsQuery.dataUpdatedAt,
-    issuesQuery.dataUpdatedAt
+    issuesQuery.dataUpdatedAt,
+    linkedTasksQuery.dataUpdatedAt
   );
 
   const refresh = async () => {
     await configurationQuery.refetch();
     if (configuration.type === 'scrum') await sprintsQuery.refetch();
     if (canLoadIssues) await issuesQuery.refetch();
+    if (issueUrls.length > 0) await linkedTasksQuery.refetch();
   };
 
   return (
@@ -268,7 +335,8 @@ export function JiraBoard({ board }: { board: JiraBoardSummary }) {
             {columns.map(({ column, issues: columnIssues }) => (
               <section
                 key={column.id}
-                className="flex h-full w-[min(20rem,calc(100vw-2rem))] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-background/70"
+                className="flex h-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-background/70"
+                style={{ width: jiraBoardColumnWidthCss(board.columnWidth) }}
                 aria-labelledby={`jira-column-${column.id}`}
               >
                 <div className="flex items-center justify-between border-b border-border px-3 py-2.5">
@@ -288,6 +356,7 @@ export function JiraBoard({ board }: { board: JiraBoardSummary }) {
                     <JiraIssueCard
                       key={issue.id}
                       issue={issue}
+                      linkedTasks={linkedTasksByIssueUrl.get(issue.url) ?? []}
                       selected={issue.key === selectedIssue?.key}
                       onSelect={() => setParams({ issueKey: issue.key })}
                     />
@@ -304,12 +373,21 @@ export function JiraBoard({ board }: { board: JiraBoardSummary }) {
         </div>
       )}
       <JiraIssueInspector
+        board={board}
+        columns={configuration.columns}
         issue={selectedIssue}
+        linkedTasks={selectedIssue ? (linkedTasksByIssueUrl.get(selectedIssue.url) ?? []) : []}
+        isLoadingLinkedTasks={linkedTasksQuery.isLoading}
+        linkedTasksError={linkedTasksQuery.error}
+        onRetryLinkedTasks={() => void linkedTasksQuery.refetch()}
+        defaultProjectId={defaultProjectId}
+        defaultProjectName={defaultProjectName}
+        defaultProjectIsStale={boardDefault.isStale}
         onClose={() => setParams({ issueKey: undefined })}
       />
     </div>
   );
-}
+});
 
 function JiraIssueFilterBar({
   issues,
@@ -575,10 +653,12 @@ function SprintSelect({
 
 function JiraIssueCard({
   issue,
+  linkedTasks,
   selected,
   onSelect,
 }: {
   issue: JiraBoardIssue;
+  linkedTasks: LinkedIssueTaskSummary[];
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -595,6 +675,29 @@ function JiraIssueCard({
         {issue.priorityName ? <span className="truncate">{issue.priorityName}</span> : null}
       </div>
       <h3 className="mt-1.5 line-clamp-3 text-sm leading-5 text-foreground">{issue.summary}</h3>
+      {linkedTasks.length > 0 ? (
+        <div className="mt-2.5 flex min-w-0 items-center gap-2 border-t border-border pt-2 text-[10px] text-foreground-muted">
+          <span className="flex shrink-0 items-center gap-1 font-medium text-foreground-passive">
+            <Link2 className="size-3" />
+            {linkedTasks.length} {linkedTasks.length === 1 ? 'task' : 'tasks'}
+          </span>
+          <span className="min-w-0 flex-1 truncate">
+            {linkedTasks[0]!.projectName} / {linkedTasks[0]!.taskName}
+          </span>
+          <StackedAgentLogos stats={linkedTasks[0]!.conversations} />
+          {linkedTasks[0]!.branchName ? (
+            <GitBranch className="size-3 shrink-0" aria-label={linkedTasks[0]!.branchName} />
+          ) : null}
+          {linkedTasks[0]!.pullRequests[0] ? (
+            <GitPullRequest
+              className="size-3 shrink-0"
+              aria-label={
+                linkedTasks[0]!.pullRequests[0].identifier ?? linkedTasks[0]!.pullRequests[0].title
+              }
+            />
+          ) : null}
+        </div>
+      ) : null}
       <div className="mt-3 flex min-w-0 items-center justify-between gap-2 text-[10px] text-foreground-muted">
         <span className="truncate">{issue.issueTypeName ?? issue.statusName ?? 'Issue'}</span>
         <span className="flex min-w-0 items-center gap-2">
@@ -614,16 +717,113 @@ function JiraIssueCard({
   );
 }
 
-function JiraIssueInspector({
+const JiraIssueInspector = observer(function JiraIssueInspector({
+  board,
+  columns,
   issue,
+  linkedTasks,
+  isLoadingLinkedTasks,
+  linkedTasksError,
+  onRetryLinkedTasks,
+  defaultProjectId,
+  defaultProjectName,
+  defaultProjectIsStale,
   onClose,
 }: {
+  board: JiraBoardSummary;
+  columns: JiraBoardColumn[];
   issue: JiraBoardIssue | null;
+  linkedTasks: LinkedIssueTaskSummary[];
+  isLoadingLinkedTasks: boolean;
+  linkedTasksError: Error | null;
+  onRetryLinkedTasks: () => void;
+  defaultProjectId: string | null;
+  defaultProjectName: string | null;
+  defaultProjectIsStale: boolean;
   onClose: () => void;
 }) {
+  const { navigate } = useNavigate();
+  const showCreateTaskModal = useShowModal('taskModal');
+  const showBoardSettings = useShowModal('jiraBoardSettingsModal');
+  const [projectError, setProjectError] = useState<string | null>(null);
+  const tasksByProject = groupLinkedTasksByProject(linkedTasks);
+  const primaryAction = resolveLinkedWorkPrimaryAction(linkedTasks);
+  const issueDetailQuery = useQuery<JiraIssueDetail>({
+    queryKey: ['jira', 'issue', board.accountId, issue?.key ?? null],
+    queryFn: async () => {
+      if (!issue) throw new Error('No Jira issue is selected.');
+      const result = await rpc.jira.getIssueDetail({
+        accountId: board.accountId,
+        issueKey: issue.key,
+      });
+      if (!result.success) throw new Error(result.error.message);
+      return result.data;
+    },
+    enabled: issue !== null,
+    staleTime: 60_000,
+  });
+  const detail = issueDetailQuery.data;
+  const transitionsQuery = useJiraIssueTransitions(board.accountId, issue?.key ?? null);
+  const { confirmDetachedTransition } = useConfirmedJiraTransition({
+    accountId: board.accountId,
+    boardId: board.id,
+    issueKey: issue?.key ?? '',
+  });
+  const defaultTransition = resolveDefaultJiraTransition(
+    columns,
+    issue?.statusId ?? null,
+    transitionsQuery.data ?? []
+  );
+  const startTaskTransition = resolveStartTaskJiraTransition(
+    detail?.statusCategoryName,
+    defaultTransition
+  );
+
+  useEffect(() => {
+    setProjectError(null);
+  }, [issue?.key, defaultProjectId]);
+
+  const startTask = () => {
+    if (!issue) return;
+    if (!defaultProjectId) {
+      setProjectError(
+        defaultProjectIsStale
+          ? "This board's default project is unavailable. Choose another in Board settings."
+          : 'Set a default Emdash project in Board settings before starting a task.'
+      );
+      return;
+    }
+    setProjectError(null);
+    showCreateTaskModal({
+      projectId: defaultProjectId,
+      strategy: 'from-issue',
+      initialIssue: jiraBoardIssueToLinkedIssue({
+        key: issue.key,
+        summary: detail?.summary ?? issue.summary,
+        description: detail?.description,
+        statusName: detail?.statusName ?? issue.statusName,
+        assigneeName: detail?.assigneeName ?? issue.assigneeName,
+        updatedAt: detail?.updatedAt ?? issue.updatedAt,
+        url: issue.url,
+        projectName: board.projectName,
+      }),
+      onSuccess: () => {
+        if (!startTaskTransition) return;
+        confirmDetachedTransition(startTaskTransition, {
+          title: `Move ${issue.key} to ${startTaskTransition.toStatusName}?`,
+          description: `The Emdash task has started. Move the Jira issue from Todo to ${startTaskTransition.toStatusName}?`,
+        });
+      },
+    });
+  };
+
+  const openTask = (task: LinkedIssueTaskSummary) => {
+    navigate('task', { projectId: task.projectId, taskId: task.taskId });
+  };
+
   return (
     <Sheet open={issue !== null} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-md">
+      <SheetContent side="right" className="flex w-full flex-col gap-0 p-0 sm:max-w-xl">
         {issue ? (
           <>
             <SheetHeader className="items-start border-b border-border p-5">
@@ -633,21 +833,275 @@ function JiraIssueInspector({
               </div>
             </SheetHeader>
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              <dl className="space-y-4">
-                <IssueField label="Status" value={issue.statusName} />
-                <IssueField label="Type" value={issue.issueTypeName} />
-                <IssueField label="Priority" value={issue.priorityName} />
-                <IssueField label="Assignee" value={issue.assigneeName ?? 'Unassigned'} />
-                <IssueField
-                  label="Updated"
-                  value={
-                    issue.updatedAt ? new Date(issue.updatedAt).toLocaleString() : 'Not available'
-                  }
-                />
-              </dl>
+              <section aria-labelledby="jira-issue-description">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 id="jira-issue-description" className="text-sm font-medium text-foreground">
+                    Description
+                  </h3>
+                  {issueDetailQuery.isFetching && detail ? (
+                    <span className="text-[10px] text-foreground-muted">Refreshing...</span>
+                  ) : null}
+                </div>
+                {issueDetailQuery.isLoading ? (
+                  <div className="flex items-center gap-2 py-3 text-xs text-foreground-muted">
+                    <Spinner size="sm" /> Loading ticket details
+                  </div>
+                ) : issueDetailQuery.error ? (
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs leading-5 text-foreground-muted">
+                      {errorMessage(issueDetailQuery.error)}
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={() => void issueDetailQuery.refetch()}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                ) : detail?.description ? (
+                  <MarkdownRenderer
+                    content={normalizeJiraDescriptionForDisplay(detail.description)}
+                    variant="compact"
+                    allowHtml={false}
+                    enableMath={false}
+                    className="text-sm leading-6 text-foreground"
+                  />
+                ) : (
+                  <p className="text-xs text-foreground-muted">No description provided.</p>
+                )}
+              </section>
+
+              <section
+                className="mt-6 border-t border-border pt-5"
+                aria-labelledby="jira-issue-details"
+              >
+                <h3 id="jira-issue-details" className="mb-4 text-sm font-medium text-foreground">
+                  Ticket details
+                </h3>
+                <dl className="space-y-4">
+                  <IssueField label="Status" value={detail?.statusName ?? issue.statusName} />
+                  <IssueField label="Type" value={detail?.issueTypeName ?? issue.issueTypeName} />
+                  <IssueField label="Priority" value={detail?.priorityName ?? issue.priorityName} />
+                  <IssueField
+                    label="Assignee"
+                    value={detail?.assigneeName ?? issue.assigneeName ?? 'Unassigned'}
+                  />
+                  {detail?.reporterName ? (
+                    <IssueField label="Reporter" value={detail.reporterName} />
+                  ) : null}
+                  {detail?.projectName ? (
+                    <IssueField
+                      label="Jira project"
+                      value={
+                        detail.projectKey
+                          ? `${detail.projectName} (${detail.projectKey})`
+                          : detail.projectName
+                      }
+                    />
+                  ) : null}
+                  {detail?.parentKey ? (
+                    <IssueField
+                      label="Parent"
+                      value={
+                        detail.parentSummary
+                          ? `${detail.parentKey} · ${detail.parentSummary}`
+                          : detail.parentKey
+                      }
+                    />
+                  ) : null}
+                  {detail?.createdAt ? (
+                    <IssueField label="Created" value={formatJiraDate(detail.createdAt)} />
+                  ) : null}
+                  <IssueField
+                    label="Updated"
+                    value={formatJiraDate(detail?.updatedAt ?? issue.updatedAt)}
+                  />
+                  {detail?.dueDate ? (
+                    <IssueField label="Due" value={formatJiraDate(detail.dueDate)} />
+                  ) : null}
+                  {detail?.resolutionName ? (
+                    <IssueField label="Resolution" value={detail.resolutionName} />
+                  ) : null}
+                  {detail?.resolvedAt ? (
+                    <IssueField label="Resolved" value={formatJiraDate(detail.resolvedAt)} />
+                  ) : null}
+                  <IssueField
+                    label="Emdash project"
+                    value={
+                      defaultProjectName ??
+                      (defaultProjectIsStale
+                        ? 'Board default unavailable'
+                        : 'Set in Board settings')
+                    }
+                  />
+                </dl>
+                {detail && (detail.labels.length > 0 || detail.components.length > 0) ? (
+                  <div className="mt-4 space-y-3">
+                    {detail.labels.length > 0 ? (
+                      <IssueTags label="Labels" values={detail.labels} />
+                    ) : null}
+                    {detail.components.length > 0 ? (
+                      <IssueTags label="Components" values={detail.components} />
+                    ) : null}
+                  </div>
+                ) : null}
+              </section>
+              {projectError ? (
+                <p className="mt-4 text-xs text-foreground-error">{projectError}</p>
+              ) : null}
+              {!defaultProjectId ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-3"
+                  onClick={() => showBoardSettings({ board })}
+                >
+                  Board settings
+                </Button>
+              ) : null}
+
+              <JiraTransitionSuggestions
+                accountId={board.accountId}
+                boardId={board.id}
+                issueKey={issue.key}
+                columns={columns}
+                currentStatusId={issue.statusId}
+                currentStatus={detail?.statusName ?? issue.statusName}
+              />
+
+              <section
+                className="mt-6 border-t border-border pt-5"
+                aria-labelledby="jira-linked-tasks"
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h3 id="jira-linked-tasks" className="text-sm font-medium text-foreground">
+                    Emdash tasks
+                  </h3>
+                  {linkedTasks.length > 0 ? (
+                    <span className="text-xs text-foreground-muted">
+                      {linkedTasks.length} linked
+                    </span>
+                  ) : null}
+                </div>
+                {isLoadingLinkedTasks ? (
+                  <div className="flex items-center gap-2 text-xs text-foreground-muted">
+                    <Spinner size="sm" /> Loading linked tasks
+                  </div>
+                ) : linkedTasksError ? (
+                  <div className="rounded-lg border border-border p-3">
+                    <p className="text-xs leading-5 text-foreground-muted">
+                      Unable to load linked Emdash tasks.
+                    </p>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-2"
+                      onClick={onRetryLinkedTasks}
+                    >
+                      Try again
+                    </Button>
+                  </div>
+                ) : tasksByProject.length === 0 ? (
+                  <p className="text-xs leading-5 text-foreground-muted">
+                    No Emdash tasks are linked to this Jira issue.
+                  </p>
+                ) : (
+                  <div className="space-y-4">
+                    {tasksByProject.map(([projectName, tasks]) => (
+                      <div key={projectName}>
+                        <p className="mb-1.5 truncate text-[10px] font-medium tracking-wide text-foreground-muted uppercase">
+                          {projectName}
+                        </p>
+                        <div className="space-y-1.5">
+                          {tasks.map((task) => (
+                            <button
+                              key={task.taskId}
+                              type="button"
+                              className="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors enabled:hover:bg-background-1 disabled:cursor-default"
+                              disabled={task.archivedAt !== null}
+                              onClick={() => openTask(task)}
+                            >
+                              <div className="flex min-w-0 items-center gap-2">
+                                <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                                  {task.taskName}
+                                </span>
+                                <StackedAgentLogos stats={task.conversations} />
+                                {task.activeAgentStatuses[0] ? (
+                                  <AgentStatusIndicator
+                                    status={task.activeAgentStatuses[0].status}
+                                  />
+                                ) : null}
+                              </div>
+                              <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-foreground-muted">
+                                <span>
+                                  {task.archivedAt ? 'Archived' : taskStatusLabel(task.status)}
+                                </span>
+                                {task.branchName ? (
+                                  <span className="flex min-w-0 items-center gap-1">
+                                    <GitBranch className="size-3 shrink-0" />
+                                    <span className="max-w-48 truncate">{task.branchName}</span>
+                                  </span>
+                                ) : null}
+                                {task.pullRequests.length > 0 ? (
+                                  <span className="flex items-center gap-1">
+                                    <GitPullRequest className="size-3" />
+                                    {task.pullRequests.length === 1
+                                      ? (task.pullRequests[0]!.identifier ?? 'Pull request')
+                                      : `${String(task.pullRequests.length)} pull requests`}
+                                  </span>
+                                ) : null}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
             </div>
-            <SheetFooter className="p-4">
-              <Button className="w-full" onClick={() => void rpc.app.openExternal(issue.url)}>
+            <SheetFooter className="flex flex-col gap-2 p-4 sm:flex-col">
+              {primaryAction.kind === 'open-task' ? (
+                <Button className="w-full" onClick={() => openTask(primaryAction.task)}>
+                  Open task
+                </Button>
+              ) : null}
+              {primaryAction.kind === 'choose-task' ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger render={<Button className="w-full" />}>
+                    Choose task
+                    <ChevronDown className="size-4" />
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="min-w-64">
+                    {groupLinkedTasksByProject(primaryAction.tasks).map(
+                      ([projectName, projectTasks]) => (
+                        <DropdownMenuGroup key={projectName}>
+                          <DropdownMenuLabel>{projectName}</DropdownMenuLabel>
+                          {projectTasks.map((task) => (
+                            <DropdownMenuItem key={task.taskId} onClick={() => openTask(task)}>
+                              <span className="min-w-0 flex-1 truncate">{task.taskName}</span>
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuGroup>
+                      )
+                    )}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : null}
+              <Button
+                className="w-full"
+                variant={primaryAction.kind === 'start-task' ? 'default' : 'outline'}
+                onClick={startTask}
+              >
+                Start task
+              </Button>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => void rpc.app.openExternal(issue.url)}
+              >
                 <ExternalLink className="size-4" />
                 Open in Jira
               </Button>
@@ -657,7 +1111,7 @@ function JiraIssueInspector({
       </SheetContent>
     </Sheet>
   );
-}
+});
 
 function IssueField({ label, value }: { label: string; value: string | null }) {
   return (
@@ -666,6 +1120,33 @@ function IssueField({ label, value }: { label: string; value: string | null }) {
       <dd className="min-w-0 text-sm text-foreground">{value ?? 'Not available'}</dd>
     </div>
   );
+}
+
+function IssueTags({ label, values }: { label: string; values: string[] }) {
+  return (
+    <div className="grid grid-cols-[6rem_minmax(0,1fr)] gap-3">
+      <span className="text-xs text-foreground-muted">{label}</span>
+      <div className="flex min-w-0 flex-wrap gap-1.5">
+        {values.map((value) => (
+          <span
+            key={value}
+            className="rounded-md border border-border bg-background-1 px-2 py-0.5 text-[10px] text-foreground-passive"
+          >
+            {value}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function formatJiraDate(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T00:00:00Z` : value);
+  if (Number.isNaN(date.getTime())) return value;
+  return /^\d{4}-\d{2}-\d{2}$/.test(value)
+    ? date.toLocaleDateString(undefined, { timeZone: 'UTC' })
+    : date.toLocaleString();
 }
 
 function BoardState({
@@ -702,6 +1183,22 @@ function initials(name: string): string {
     .map((part) => part[0])
     .join('')
     .toUpperCase();
+}
+
+function groupLinkedTasksByIssueUrl(
+  tasks: LinkedIssueTaskSummary[]
+): Map<string, LinkedIssueTaskSummary[]> {
+  const grouped = new Map<string, LinkedIssueTaskSummary[]>();
+  for (const task of tasks) {
+    const issueTasks = grouped.get(task.issueUrl) ?? [];
+    issueTasks.push(task);
+    grouped.set(task.issueUrl, issueTasks);
+  }
+  return grouped;
+}
+
+function taskStatusLabel(status: LinkedIssueTaskSummary['status']): string {
+  return status.replaceAll('_', ' ').replace(/^./, (character) => character.toUpperCase());
 }
 
 function errorMessage(error: unknown): string {

@@ -11,6 +11,7 @@ import { setupViewCommandProvider } from '@renderer/lib/commands/registry';
 import { wireCommitHistoryInvalidation } from '@renderer/lib/commit-history-invalidation';
 import { wireExternalLinkRequests } from '@renderer/lib/external-link-requests';
 import { rpc } from '@renderer/lib/ipc';
+import { wireLinkedTaskCacheInvalidation } from '@renderer/lib/linked-task-cache-invalidation';
 import { wireModelRegistryInvalidation } from '@renderer/lib/monaco/invalidation-bridges';
 import { monacoBootstrap } from '@renderer/lib/monaco/monaco-bootstrap';
 import { modelRegistry } from '@renderer/lib/monaco/monaco-model-registry';
@@ -28,6 +29,7 @@ async function bootstrap() {
   wireModelRegistryInvalidation(modelRegistry);
   wirePrCacheInvalidation();
   wireCommitHistoryInvalidation();
+  wireLinkedTaskCacheInvalidation();
   wireExternalLinkRequests();
 
   appState.update.start();

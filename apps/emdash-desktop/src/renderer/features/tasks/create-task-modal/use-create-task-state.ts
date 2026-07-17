@@ -20,21 +20,30 @@ export function useCreateTaskState(
   currentBranch: string | null,
   repositoryWorkspaceId: string | null | undefined,
   initialPR?: PullRequest,
-  initialLinkedType: LinkedType = null
+  initialLinkedType: LinkedType = null,
+  initialIssue?: LinkedIssue
 ) {
   const { autoGenerateName, createBranchAndWorktree } = useTaskSettings();
 
-  const [linkedType, setLinkedTypeRaw] = useState<LinkedType>(initialPR ? 'pr' : initialLinkedType);
-  const [linkedIssue, setLinkedIssueRaw] = useState<LinkedIssue | null>(null);
+  const [linkedType, setLinkedTypeRaw] = useState<LinkedType>(
+    initialPR ? 'pr' : initialIssue ? 'issue' : initialLinkedType
+  );
+  const [linkedIssue, setLinkedIssueRaw] = useState<LinkedIssue | null>(initialIssue ?? null);
   const [linkedPR, setLinkedPRRaw] = useState<PullRequest | null>(initialPR ?? null);
   const [prevProjectId, setPrevProjectId] = useState(projectId);
 
-  // Reset linked state when project changes.
+  // Reset linked state when project changes, but keep a prefilled Jira/issue link.
   if (projectId !== prevProjectId) {
     setPrevProjectId(projectId);
-    setLinkedTypeRaw(null);
-    setLinkedIssueRaw(null);
-    setLinkedPRRaw(null);
+    if (initialIssue) {
+      setLinkedTypeRaw('issue');
+      setLinkedIssueRaw(initialIssue);
+      setLinkedPRRaw(null);
+    } else {
+      setLinkedTypeRaw(null);
+      setLinkedIssueRaw(null);
+      setLinkedPRRaw(null);
+    }
   }
 
   // Stable random key for the "plain task" name generation — one per modal session.
@@ -56,7 +65,7 @@ export function useCreateTaskState(
     autoGenerateName &&
     linkedType === 'issue' &&
     linkedIssue !== null &&
-    directIssueTaskName === null;
+    (directIssueTaskName === null || linkedIssue.provider === 'jira');
   const { data: issueGeneratedName, isPending: isIssuePending } = useQuery({
     queryKey: ['generateTaskName', linkedIssue?.title ?? null, linkedIssue?.description ?? null],
     queryFn: () =>
@@ -84,6 +93,11 @@ export function useCreateTaskState(
   // Pick the effective generated name and pending state based on linked type + selection.
   const generatedName = (() => {
     if (linkedType === 'issue' && linkedIssue !== null) {
+      if (linkedIssue.provider === 'jira' && shouldGenerateFromIssue) {
+        return issueGeneratedName
+          ? (getIssueTaskName(linkedIssue, { generatedName: issueGeneratedName }) ?? undefined)
+          : (directIssueTaskName ?? undefined);
+      }
       return directIssueTaskName ?? (shouldGenerateFromIssue ? issueGeneratedName : undefined);
     }
     if (linkedType === 'pr' && linkedPR !== null) {

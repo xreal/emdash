@@ -1,12 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import type { JiraBoardIssue } from '@shared/core/jira/jira-board';
+import type { JiraBoardIssue, JiraIssueTransition } from '@shared/core/jira/jira-board';
+import type { LinkedIssueTaskSummary } from '@shared/core/tasks/tasks';
 import {
   filterJiraIssues,
   groupJiraIssuesByColumn,
+  jiraBoardColumnWidthCss,
   JIRA_UNASSIGNED_FILTER,
+  normalizeJiraDescriptionForDisplay,
+  resolveBoardDefaultProjectId,
+  resolveDefaultJiraTransition,
   resolveJiraSprintId,
+  resolveLinkedWorkPrimaryAction,
+  resolveStartTaskJiraTransition,
   sortJiraSprints,
 } from './jira-board-utils';
+
+describe('normalizeJiraDescriptionForDisplay', () => {
+  it('replaces plain and Markdown-escaped Jira emoji shortcodes', () => {
+    expect(
+      normalizeJiraDescriptionForDisplay(
+        ':check_mark: :white\\_check\\_mark: :warning: :custom\\_team:'
+      )
+    ).toBe('✅ ✅ ⚠️ :custom\\_team:');
+  });
+});
 
 function issue(id: string, statusId: string | null): JiraBoardIssue {
   return {
@@ -107,5 +124,114 @@ describe('Jira sprint selection', () => {
     ];
 
     expect(sortJiraSprints(sprints).map(({ id }) => id)).toEqual([20, 30, 11, 10]);
+  });
+});
+
+function linkedTask(
+  overrides: Partial<LinkedIssueTaskSummary> & Pick<LinkedIssueTaskSummary, 'taskId' | 'projectId'>
+): LinkedIssueTaskSummary {
+  return {
+    taskId: overrides.taskId,
+    taskName: overrides.taskName ?? `Task ${overrides.taskId}`,
+    projectId: overrides.projectId,
+    projectName: overrides.projectName ?? `Project ${overrides.projectId}`,
+    status: overrides.status ?? 'in_progress',
+    issueUrl: overrides.issueUrl ?? 'https://example.atlassian.net/browse/PLAT-1',
+    archivedAt: overrides.archivedAt ?? null,
+    updatedAt: overrides.updatedAt ?? '2026-07-17T12:00:00.000Z',
+    branchName: overrides.branchName ?? null,
+    conversations: overrides.conversations ?? {},
+    activeAgentStatuses: overrides.activeAgentStatuses ?? [],
+    pullRequests: overrides.pullRequests ?? [],
+  };
+}
+
+describe('resolveLinkedWorkPrimaryAction', () => {
+  it('starts a task when only archived links exist', () => {
+    expect(
+      resolveLinkedWorkPrimaryAction([
+        linkedTask({ taskId: 'a', projectId: 'p1', archivedAt: '2026-07-01T00:00:00.000Z' }),
+      ])
+    ).toEqual({ kind: 'start-task' });
+  });
+
+  it('opens a single active linked task and chooses among several', () => {
+    const one = linkedTask({ taskId: 'a', projectId: 'p1' });
+    const two = linkedTask({ taskId: 'b', projectId: 'p2' });
+    expect(resolveLinkedWorkPrimaryAction([one])).toEqual({ kind: 'open-task', task: one });
+    expect(resolveLinkedWorkPrimaryAction([one, two])).toEqual({
+      kind: 'choose-task',
+      tasks: [one, two],
+    });
+  });
+});
+
+describe('resolveBoardDefaultProjectId', () => {
+  it('keeps mounted defaults and marks missing defaults stale', () => {
+    expect(resolveBoardDefaultProjectId('p1', new Set(['p1', 'p2']))).toEqual({
+      projectId: 'p1',
+      isStale: false,
+    });
+    expect(resolveBoardDefaultProjectId('missing', new Set(['p1']))).toEqual({
+      projectId: null,
+      isStale: true,
+    });
+    expect(resolveBoardDefaultProjectId(null, new Set(['p1']))).toEqual({
+      projectId: null,
+      isStale: false,
+    });
+  });
+});
+
+describe('jiraBoardColumnWidthCss', () => {
+  it('uses the current comfortable width for legacy boards and maps each preset', () => {
+    expect(jiraBoardColumnWidthCss(undefined)).toBe('min(20rem, calc(100vw - 2rem))');
+    expect(jiraBoardColumnWidthCss('compact')).toBe('min(17rem, calc(100vw - 2rem))');
+    expect(jiraBoardColumnWidthCss('comfortable')).toBe('min(20rem, calc(100vw - 2rem))');
+    expect(jiraBoardColumnWidthCss('wide')).toBe('min(24rem, calc(100vw - 2rem))');
+  });
+});
+
+describe('Jira transition suggestions', () => {
+  const inProgress: JiraIssueTransition = {
+    id: '21',
+    name: 'Start Progress',
+    toStatusId: '2',
+    toStatusName: 'In Progress',
+    toStatusCategoryName: 'In Progress',
+    requiredFields: [],
+  };
+  const done: JiraIssueTransition = {
+    id: '31',
+    name: 'Done',
+    toStatusId: '3',
+    toStatusName: 'Done',
+    toStatusCategoryName: 'Done',
+    requiredFields: [],
+  };
+  const columns = [
+    { id: 'todo', name: 'To do', statusIds: ['1'], min: null, max: null },
+    { id: 'progress', name: 'In progress', statusIds: ['2'], min: null, max: null },
+    { id: 'done', name: 'Done', statusIds: ['3'], min: null, max: null },
+  ];
+
+  it('uses the first valid transition into the next native board column', () => {
+    expect(resolveDefaultJiraTransition(columns, '1', [done, inProgress])).toEqual(inProgress);
+    expect(resolveDefaultJiraTransition(columns, '2', [inProgress, done])).toEqual(done);
+  });
+
+  it('does not use a transition requiring Jira fields as the default', () => {
+    expect(
+      resolveDefaultJiraTransition(columns, '1', [
+        { ...inProgress, requiredFields: ['Resolution'] },
+        done,
+      ])
+    ).toBeNull();
+  });
+
+  it('offers In Progress after starting a task only from the Todo category', () => {
+    expect(resolveStartTaskJiraTransition('To Do', inProgress)).toEqual(inProgress);
+    expect(resolveStartTaskJiraTransition('In Progress', done)).toBeNull();
+    expect(resolveStartTaskJiraTransition('To Do', done)).toBeNull();
   });
 });
