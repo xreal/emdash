@@ -20,6 +20,7 @@ export const viewEvents: Record<
   | 'skills_viewed'
   | 'mcp_viewed'
   | 'automations_viewed'
+  | 'jira_viewed'
 > = {
   home: 'home_viewed',
   automations: 'automations_viewed',
@@ -29,6 +30,7 @@ export const viewEvents: Record<
   settings: 'settings_viewed',
   skills: 'skills_viewed',
   mcp: 'mcp_viewed',
+  jira: 'jira_viewed',
 };
 
 type LibraryViewId = 'library' | 'skills' | 'mcp';

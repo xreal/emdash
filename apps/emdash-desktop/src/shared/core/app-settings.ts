@@ -12,6 +12,7 @@ import {
   type terminalSettingsSchema,
   type themeSchema,
 } from '@main/core/settings/schema';
+import type { JiraWorkspaceSettings } from '@shared/core/jira/jira-board';
 
 export type LocalProjectSettings = z.infer<typeof localProjectSettingsSchema>;
 export type ProjectSettings = z.infer<typeof projectSettingsSchema>;
@@ -25,6 +26,7 @@ export type ProviderCustomConfig = z.infer<typeof providerCustomConfigEntrySchem
 export type ProviderCustomConfigs = Record<string, ProviderCustomConfig>;
 export type ChangesViewMode = z.infer<typeof changesViewModeSchema>;
 export type BrowserSettings = z.infer<typeof browserSettingsSchema>;
+export type { JiraWorkspaceSettings };
 export type ChangesSection = keyof ChangesViewMode;
 export type ChangesListViewMode = ChangesViewMode[ChangesSection];
 export type AppSettings = z.infer<typeof appSettingsSchema>;

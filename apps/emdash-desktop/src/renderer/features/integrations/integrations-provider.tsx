@@ -111,9 +111,12 @@ export function IntegrationsProvider({ children }: { children: React.ReactNode }
       } finally {
         setIntegrationMutating(integrationId, false);
         invalidateStatuses();
+        if (integrationId === 'jira') {
+          void queryClient.invalidateQueries({ queryKey: ['jira'] });
+        }
       }
     },
-    [invalidateStatuses, setIntegrationMutating]
+    [invalidateStatuses, queryClient, setIntegrationMutating]
   );
 
   const connectIntegration = useCallback(

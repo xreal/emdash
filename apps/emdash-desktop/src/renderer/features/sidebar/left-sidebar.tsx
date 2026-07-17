@@ -1,6 +1,7 @@
 import { BookOpen, Clock, FolderInput, Library, Settings } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import React from 'react';
+import { JiraSidebarGroup } from '@renderer/features/jira/jira-sidebar-group';
 import { rpc } from '@renderer/lib/ipc';
 import { useWorkspaceLayoutContext } from '@renderer/lib/layout/layout-provider';
 import {
@@ -56,6 +57,7 @@ export const LeftSidebar: React.FC = observer(function LeftSidebar() {
       <SidebarContainer className="min-h-0 w-full flex-1 border-r-0">
         <SidebarContent className="flex flex-col">
           <SidebarPinnedTaskList />
+          <JiraSidebarGroup />
           <SidebarGroup className="mb-0 flex min-h-0 flex-1 flex-col">
             <ProjectsGroupLabel />
             <SidebarGroupContent className="flex min-h-0 flex-1 flex-col">

@@ -1,6 +1,7 @@
 import { CommandPaletteModal } from '@renderer/features/command-palette/command-palette-modal';
 import { CreateConversationModal } from '@renderer/features/conversations/create-conversation-modal';
 import { IntegrationSetupModal } from '@renderer/features/integrations/integration-setup-modal';
+import { AddJiraBoardsModal } from '@renderer/features/jira/add-jira-boards-modal';
 import { PromptModal } from '@renderer/features/library/prompts/prompt-modal';
 import { McpModal } from '@renderer/features/mcp/components/McpModal';
 import { AddProjectModal } from '@renderer/features/projects/components/add-project-modal/add-project-modal';
@@ -62,6 +63,7 @@ export const modalRegistry = {
   shareProjectConfigModal: createModal(ShareProjectConfigModal, { size: 'md' }),
   projectConfigImportModal: createModal(ProjectConfigImportModal, { size: 'md' }),
   integrationSetupModal: createModal(IntegrationSetupModal, { size: 'md' }),
+  addJiraBoardsModal: createModal(AddJiraBoardsModal, { size: 'md' }),
   githubConnectModal: createModal(GithubConnectModal, { size: 'md' }),
   agentSignInModal: createModal(AgentSignInModal, { size: 'lg' }),
   addRemoteModal: createModal(AddRemoteModal),
