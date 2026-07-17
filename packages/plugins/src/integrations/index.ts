@@ -23,3 +23,24 @@ export type {
   IntegrationAuthMethod,
   VerifyResult,
 } from './capabilities/auth';
+export {
+  getJiraAccountId,
+  getJiraBoardConfiguration,
+  getJiraIssueDetail,
+  getJiraIssueTransitions,
+  listJiraBoardIssues,
+  listJiraBoardSprints,
+  listJiraBoards,
+  transitionJiraIssue,
+  type ListJiraBoardIssuesInput,
+} from './impl/jira/client';
+export type {
+  JiraBoardColumn,
+  JiraBoardConfiguration,
+  JiraBoardIssue,
+  JiraBoardIssuePage,
+  JiraIssueDetail,
+  JiraIssueTransition,
+  JiraBoardSummary,
+  JiraSprintSummary,
+} from './impl/jira/types';

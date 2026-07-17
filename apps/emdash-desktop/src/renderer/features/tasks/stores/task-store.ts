@@ -4,6 +4,7 @@ import { conversationRegistry } from '@renderer/features/conversations/stores/co
 import type { GitRepositoryStore } from '@renderer/features/projects/stores/git-repository-store';
 import { DraftCommentsStore } from '@renderer/features/tasks/diff-view/stores/draft-comments-store';
 import { rpc } from '@renderer/lib/ipc';
+import { invalidateLinkedIssueUrlsCache } from '@renderer/lib/linked-task-cache-invalidation';
 import { log } from '@renderer/utils/logger';
 import type { LinkedIssue } from '@shared/core/linked-issue';
 import type {
@@ -263,6 +264,7 @@ export class TaskStore {
       runInAction(() => {
         task.linkedIssue = issue;
       });
+      invalidateLinkedIssueUrlsCache();
     } catch (e) {
       runInAction(() => {
         task.linkedIssue = previousIssue;

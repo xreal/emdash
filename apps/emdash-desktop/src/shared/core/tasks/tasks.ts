@@ -7,7 +7,7 @@ import type {
 import z from 'zod';
 import type { Conversation } from '@shared/core/conversations/conversations';
 import type { LinkedIssue } from '@shared/core/linked-issue';
-import type { PullRequest } from '@shared/core/pull-requests/pull-requests';
+import type { PullRequest, PullRequestStatus } from '@shared/core/pull-requests/pull-requests';
 import type { TaskConfig } from '@shared/core/tasks/task-config';
 import type { WorkspaceConfig } from '@shared/core/workspaces/workspace-config';
 
@@ -76,6 +76,30 @@ export type Task = {
   workspaceId?: string;
   type: 'task' | 'automation-run';
   automationRunId?: string;
+};
+
+export type LinkedIssueTaskSummary = {
+  taskId: string;
+  taskName: string;
+  projectId: string;
+  projectName: string;
+  status: TaskLifecycleStatus;
+  issueUrl: string;
+  archivedAt: string | null;
+  updatedAt: string;
+  branchName: string | null;
+  conversations: Record<string, number>;
+  activeAgentStatuses: Array<{
+    provider: string;
+    status: 'working' | 'awaiting-input' | 'error';
+  }>;
+  pullRequests: Array<{
+    url: string;
+    identifier: string | null;
+    title: string;
+    status: PullRequestStatus;
+    isDraft: boolean;
+  }>;
 };
 
 export type TaskBootstrapStatus =

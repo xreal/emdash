@@ -16,6 +16,9 @@ export const taskController = createRPCController({
   async getTasks(projectId?: string) {
     return taskService.getTasks(projectId);
   },
+  async getTasksByLinkedIssueUrls(issueUrls: string[]) {
+    return taskService.getTasksByLinkedIssueUrls(issueUrls);
+  },
   async getDeletePreflight(projectId: string, taskIds: string[]) {
     return taskService.getDeletePreflight(projectId, taskIds);
   },

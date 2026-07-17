@@ -1,6 +1,7 @@
 import type { AgentProviderId } from '@emdash/plugins/agents';
 import z from 'zod';
 import { BROWSER_ISOLATED_PROFILE_ID } from '@shared/browser';
+import { jiraWorkspaceSettingsSchema } from '@shared/core/jira/jira-board';
 import {
   TERMINAL_FONT_SIZE_MAX,
   TERMINAL_FONT_SIZE_MIN,
@@ -152,6 +153,7 @@ export const APP_SETTINGS_SCHEMA_MAP = {
   browser: browserSettingsSchema,
   resourceMonitor: resourceMonitorSettingsSchema,
   changesViewMode: changesViewModeSchema,
+  jiraWorkspace: jiraWorkspaceSettingsSchema,
 } as const;
 
 export const appSettingsSchema = z.object({
@@ -169,4 +171,5 @@ export const appSettingsSchema = z.object({
   browser: browserSettingsSchema,
   resourceMonitor: resourceMonitorSettingsSchema,
   changesViewMode: changesViewModeSchema,
+  jiraWorkspace: jiraWorkspaceSettingsSchema,
 });

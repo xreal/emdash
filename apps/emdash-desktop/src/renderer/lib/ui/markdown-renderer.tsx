@@ -23,6 +23,7 @@ interface MarkdownRendererProps {
   variant?: Variant;
   className?: string;
   allowHtml?: boolean;
+  enableMath?: boolean;
   onOpenLink?: (href: string) => boolean | void;
   /**
    * Optional callback for resolving non-external image src values (e.g. relative
@@ -55,7 +56,8 @@ const sanitizeSchema = {
   },
 };
 
-const REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath];
+const REMARK_PLUGINS: PluggableList = [remarkGfm];
+const MATH_REMARK_PLUGINS: PluggableList = [remarkGfm, remarkMath];
 const FULL_REHYPE_PLUGINS: PluggableList = [
   rehypeRaw,
   [rehypeSanitize, sanitizeSchema],
@@ -326,7 +328,7 @@ function useCompactComponents(isDark: boolean, onOpenLink?: MarkdownRendererProp
           );
         }
         return (
-          <code className="bg-muted/60 rounded px-1 py-0.5 font-mono text-[0.92em]">
+          <code className="bg-muted rounded border border-border px-1.5 py-0.5 font-mono text-[0.88em] text-foreground">
             {children}
           </code>
         );
@@ -335,7 +337,9 @@ function useCompactComponents(isDark: boolean, onOpenLink?: MarkdownRendererProp
         isOnlyMermaidDiagramChild(children) ? (
           <>{children}</>
         ) : (
-          <pre className="mb-2 overflow-x-auto">{children}</pre>
+          <pre className="bg-muted/40 mb-2 overflow-x-auto rounded-md border border-border p-2 text-[11px] leading-relaxed [&>code]:rounded-none [&>code]:border-0 [&>code]:bg-transparent [&>code]:p-0">
+            {children}
+          </pre>
         ),
       blockquote: ({ children }: WithChildren) => (
         <blockquote className="text-muted-foreground mb-2 border-l-2 border-border pl-3 italic">
@@ -401,6 +405,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   variant = 'full',
   className,
   allowHtml = variant === 'full',
+  enableMath = true,
   resolveImage,
   onOpenLink,
 }) => {
@@ -412,12 +417,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
   const components = variant === 'full' ? fullComponents : compactComponents;
   const rehypePlugins = allowHtml ? FULL_REHYPE_PLUGINS : COMPACT_REHYPE_PLUGINS;
-  const normalizedContent = useMemo(() => normalizeLatexDelimiters(content), [content]);
+  const normalizedContent = useMemo(
+    () => (enableMath ? normalizeLatexDelimiters(content) : content),
+    [content, enableMath]
+  );
 
   return (
     <div className={cn(className)}>
       <Markdown
-        remarkPlugins={REMARK_PLUGINS}
+        remarkPlugins={enableMath ? MATH_REMARK_PLUGINS : REMARK_PLUGINS}
         rehypePlugins={rehypePlugins}
         components={components}
       >

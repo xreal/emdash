@@ -11,6 +11,7 @@ import {
 import type { ProjectSettingsStore } from '@renderer/features/projects/stores/project-settings-store';
 import { getTaskGitWorktreeStore } from '@renderer/features/tasks/stores/task-selectors';
 import { events, rpc } from '@renderer/lib/ipc';
+import { invalidateLinkedIssueUrlsCache } from '@renderer/lib/linked-task-cache-invalidation';
 import { viewStateCache } from '@renderer/lib/stores/view-state-cache';
 import type { Conversation } from '@shared/core/conversations/conversations';
 import { gitWorktreeUpdateChannel } from '@shared/core/git/events';
@@ -592,6 +593,7 @@ export class TaskManagerStore {
         }
       });
       await rpc.tasks.archiveTask(this.projectId, taskId);
+      invalidateLinkedIssueUrlsCache();
     } catch (e) {
       runInAction(() => {
         const task = this.tasks.get(taskId);
@@ -624,6 +626,7 @@ export class TaskManagerStore {
           current.data.archivedAt = undefined;
         }
       });
+      invalidateLinkedIssueUrlsCache();
     } catch (e) {
       runInAction(() => {
         const current = this.tasks.get(taskId);

@@ -41,6 +41,44 @@ describe('getIssueTaskName', () => {
     ).toBe('jona-app-42-fix-login-bug');
   });
 
+  it('builds a Jira fallback name from the uppercase key and whole lowercase title words', () => {
+    expect(
+      getIssueTaskName({
+        provider: 'jira',
+        url: 'https://example.atlassian.net/browse/PC-294',
+        title: 'Fix invalid OXUSERIDs in Shop, IM and Emarsys',
+        identifier: 'PC-294',
+      })
+    ).toBe('PC-294-fix-invalid-oxuserids-in-shop-im-and');
+  });
+
+  it('prefixes a generated Jira name with the uppercase issue key', () => {
+    expect(
+      getIssueTaskName(
+        {
+          provider: 'jira',
+          url: 'https://example.atlassian.net/browse/PC-294',
+          title: 'Fix invalid OXUSERIDs in Shop, IM and Emarsys',
+          identifier: 'PC-294',
+        },
+        { generatedName: 'fix-invalid-oxuserids-shop-emarsys' }
+      )
+    ).toBe('PC-294-fix-invalid-oxuserids-shop-emarsys');
+  });
+
+  it('limits the complete Jira task name to 50 characters', () => {
+    const name = getIssueTaskName({
+      provider: 'jira',
+      url: 'https://example.atlassian.net/browse/PC-294',
+      title: 'A title that is long enough to require truncation at a separator',
+      identifier: 'PC-294',
+    });
+
+    expect(name?.length).toBeLessThanOrEqual(50);
+    expect(name).not.toMatch(/-$/);
+    expect(name).toBe('PC-294-a-title-that-is-long-enough-to-require');
+  });
+
   it('prefixes Plain task names with the synthesized thread ref branch name', () => {
     expect(
       getIssueTaskName({

@@ -2,8 +2,9 @@ import { ExternalLink } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { type BaseModalProps } from '@renderer/lib/modal/modal-provider';
 import { Button } from '@renderer/lib/ui/button';
-import { DialogHeader, DialogTitle } from '@renderer/lib/ui/dialog';
+import { DialogDescription, DialogHeader, DialogTitle } from '@renderer/lib/ui/dialog';
 import { Input } from '@renderer/lib/ui/input';
+import { Label } from '@renderer/lib/ui/label';
 import { useIntegrationsContext, type IntegrationMetadata } from './integrations-provider';
 import { SetupFormShell } from './SetupFormShell';
 import type { SetupIntegrationType } from './types';
@@ -22,6 +23,11 @@ export function IntegrationSetupModal({ integration, onSuccess, onClose }: Props
     <>
       <DialogHeader className="flex-col items-start gap-1" showCloseButton={false}>
         <DialogTitle>{metadata ? `Connect ${metadata.name}` : 'Connect integration'}</DialogTitle>
+        {metadata ? (
+          <DialogDescription>
+            Enter your {metadata.name} connection details. Emdash verifies them before saving.
+          </DialogDescription>
+        ) : null}
       </DialogHeader>
       {metadata ? (
         <IntegrationSetupForm
@@ -79,10 +85,14 @@ function IntegrationSetupForm({
       <div className="grid gap-3">
         {method.fields.map((field, index) => (
           <div key={field.id} className="grid gap-1.5">
+            <Label htmlFor={`integration-field-${field.id}`}>
+              {field.label}
+              {field.required ? <span aria-hidden="true">*</span> : null}
+            </Label>
             <Input
               id={`integration-field-${field.id}`}
-              type={field.secret ? 'password' : 'text'}
-              placeholder={`${field.placeholder ?? field.label}${field.required ? ' *' : ''}`}
+              type={(field.masked ?? field.secret) ? 'password' : 'text'}
+              placeholder={field.placeholder ?? field.label}
               value={values[field.id] ?? ''}
               onChange={(event) => updateField(field.id, event.target.value)}
               className="h-9 w-full"

@@ -6,6 +6,7 @@ const authFieldSchema = z.object({
   id: z.string(),
   label: z.string(),
   secret: z.boolean().default(false),
+  masked: z.boolean().optional(),
   required: z.boolean().default(true),
   placeholder: z.string().optional(),
   defaultValue: z.string().optional(),

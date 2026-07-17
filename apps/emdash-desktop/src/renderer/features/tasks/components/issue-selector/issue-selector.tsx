@@ -240,6 +240,12 @@ export const IssueSelector = observer(function IssueSelector({
     </div>
   );
 
+  // Prefill from board snapshots (e.g. Jira) can supply a linked issue without a
+  // project-scoped issue integration; still render the selected value read-only.
+  if (!hasAnyIntegration && value) {
+    return <div className="max-w-full min-w-0 overflow-hidden">{selectedContent}</div>;
+  }
+
   return (
     <div className="max-w-full min-w-0 overflow-hidden">
       {hasAnyIntegration ? (
