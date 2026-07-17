@@ -1,13 +1,13 @@
-import { Clock, FolderInput, Library, MessageSquareShare, Settings } from 'lucide-react';
+import { BookOpen, Clock, FolderInput, Library, Settings } from 'lucide-react';
 import { observer } from 'mobx-react-lite';
 import React from 'react';
+import { rpc } from '@renderer/lib/ipc';
 import { useWorkspaceLayoutContext } from '@renderer/lib/layout/layout-provider';
 import {
   isCurrentView,
   useNavigate,
   useWorkspaceSlots,
 } from '@renderer/lib/layout/navigation-provider';
-import { useShowModal } from '@renderer/lib/modal/modal-provider';
 import { BoundShortcut } from '@renderer/lib/ui/shortcut';
 import { cn } from '@renderer/utils/utils';
 import { SidebarPinnedTaskList } from './pinned-task-list';
@@ -32,7 +32,6 @@ export const LeftSidebar: React.FC = observer(function LeftSidebar() {
   const { currentView } = useWorkspaceSlots();
   const { isLeftOpen } = useWorkspaceLayoutContext();
 
-  const showFeedbackModal = useShowModal('feedbackModal');
   const { isDragOver, onDragOver, onDragEnter, onDragLeave, onDrop } = useSidebarDrop();
 
   return (
@@ -113,11 +112,11 @@ export const LeftSidebar: React.FC = observer(function LeftSidebar() {
         <div className="flex items-center justify-between gap-2 border-t border-border px-3 py-2">
           <button
             type="button"
-            className="flex h-6 w-full min-w-0 cursor-pointer items-center gap-2 rounded-lg px-3 text-sm text-foreground-muted focus:outline-none focus-visible:outline-none"
-            onClick={() => showFeedbackModal({})}
+            className="flex h-6 min-w-0 cursor-pointer items-center gap-2 rounded-lg px-3 text-sm text-foreground-muted transition-colors hover:text-foreground focus:outline-none focus-visible:outline-none"
+            onClick={() => void rpc.app.openExternal('https://docs.emdash.sh')}
           >
-            <MessageSquareShare className="size-4 shrink-0" />
-            <span className="truncate">Give feedback</span>
+            <BookOpen className="size-4 shrink-0" />
+            <span className="truncate">Docs</span>
           </button>
           <UpdateSection />
         </div>

@@ -2,6 +2,7 @@ import type { IntegrationCredentials } from '@emdash/plugins/integrations';
 import { integrationPluginRegistry } from '@emdash/plugins/integrations';
 import { log } from '@main/lib/logger';
 import { telemetryService } from '@main/lib/telemetry';
+import { isIntegrationEnabled } from '@shared/integration-allowlist';
 import type { ConnectionStatus } from '@shared/issue-providers';
 import { DEFAULT_INTEGRATION_ACCOUNT_ID } from './integration-credential-store';
 import { integrationCredentialStore } from './integration-credential-store-instance';
@@ -15,6 +16,9 @@ export class IntegrationConnectionService {
     integrationId: string,
     credentials: IntegrationCredentials
   ): Promise<ConnectResult> {
+    if (!isIntegrationEnabled(integrationId)) {
+      return { success: false, error: `Unknown integration: ${integrationId}` };
+    }
     const plugin = integrationPluginRegistry.get(integrationId);
     if (!plugin) return { success: false, error: `Unknown integration: ${integrationId}` };
 
@@ -43,6 +47,9 @@ export class IntegrationConnectionService {
   }
 
   async disconnect(integrationId: string): Promise<{ success: boolean; error?: string }> {
+    if (!isIntegrationEnabled(integrationId)) {
+      return { success: false, error: `Unknown integration: ${integrationId}` };
+    }
     try {
       await integrationCredentialStore.delete(integrationId);
       telemetryService.capture('integration_disconnected', { provider: integrationId });
@@ -58,6 +65,13 @@ export class IntegrationConnectionService {
     capabilities: ConnectionStatus['capabilities'],
     accountId?: string
   ): Promise<ConnectionStatus> {
+    if (!isIntegrationEnabled(integrationId)) {
+      return {
+        connected: false,
+        error: `Unknown integration: ${integrationId}`,
+        capabilities,
+      };
+    }
     const plugin = integrationPluginRegistry.get(integrationId);
     if (!plugin) {
       return {

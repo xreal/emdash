@@ -12,14 +12,17 @@ export function PageSidebarMenu<T extends string>({
   items,
   activeId,
   onSelect,
+  header,
 }: {
   items: ReadonlyArray<PageSidebarItem<T>>;
   activeId: T;
   onSelect: (item: PageSidebarItem<T>) => void;
+  header?: React.ReactNode;
 }) {
   return (
     <div className="sticky top-0 self-start py-10 [-webkit-app-region:drag]">
       <nav className="flex w-52 flex-col gap-0.5 [-webkit-app-region:no-drag]">
+        {header}
         {items.map((item) => {
           const isActive = item.id === activeId && !item.isExternal;
           return (

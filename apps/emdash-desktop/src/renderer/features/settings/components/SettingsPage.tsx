@@ -1,7 +1,9 @@
+import { ArrowLeft } from 'lucide-react';
 import React, { useCallback } from 'react';
 import { PageHeader } from '@renderer/lib/components/page-header';
 import { PageContent, PageLayout, PageSidebarMenu } from '@renderer/lib/components/page-layout';
 import { rpc } from '@renderer/lib/ipc';
+import { useNavigate, useWorkspaceSlots } from '@renderer/lib/layout/navigation-provider';
 import { AgentsSettingsPage } from '../agents-page/AgentsSettingsPage';
 import { AccountTab } from './AccountTab';
 import { BrowserSettingsCard } from './BrowserSettingsCard';
@@ -165,6 +167,8 @@ export function SettingsPage({
   tab: SettingsPageTab;
   onTabChange: (tab: SettingsPageTab) => void;
 }) {
+  const { navigate } = useNavigate();
+  const { lastNonSettingsView } = useWorkspaceSlots();
   const handleDocsClick = useCallback(() => {
     void rpc.app.openExternal('https://docs.emdash.sh');
   }, []);
@@ -215,6 +219,16 @@ export function SettingsPage({
         <PageSidebarMenu
           items={tabs}
           activeId={activeTab}
+          header={
+            <button
+              type="button"
+              className="mb-3 flex items-center gap-2 px-3 py-2 text-sm text-foreground-muted transition-colors hover:text-foreground"
+              onClick={() => navigate(lastNonSettingsView)}
+            >
+              <ArrowLeft className="size-4" />
+              Back to workspace
+            </button>
+          }
           onSelect={(item) => {
             if (item.isExternal) {
               handleDocsClick();

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, type ReactNode } from 'react';
 import { McpView } from '@renderer/features/mcp/components/McpView';
 import { SkillsView } from '@renderer/features/skills/components/SkillsView';
 import { PageContent, PageLayout, PageSidebarMenu } from '@renderer/lib/components/page-layout';
+import { Titlebar } from '@renderer/lib/components/titlebar/Titlebar';
 import { useParams } from '@renderer/lib/layout/navigation-provider';
 import { PromptLibraryView } from './prompts/prompt-library-view';
 
@@ -66,7 +67,20 @@ export function LibraryMainPanel() {
   );
 }
 
+export function LibraryTitlebar() {
+  return (
+    <Titlebar
+      leftSlot={
+        <div className="flex items-center px-2">
+          <span className="text-sm text-foreground-muted">Library</span>
+        </div>
+      }
+    />
+  );
+}
+
 export const libraryView = {
   WrapView: LibraryViewWrapper,
+  TitlebarSlot: LibraryTitlebar,
   MainPanel: LibraryMainPanel,
 };

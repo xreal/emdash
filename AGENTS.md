@@ -291,8 +291,8 @@ pnpm run test
   safe storage; SSH credentials are managed through SSH services and OS-backed storage.
 - Release secrets live in GitHub Actions secrets, including PostHog, Cloudflare R2,
   Apple signing/notarization, Azure Trusted Signing, and Cachix credentials.
-- Telemetry must remain optional; users can disable it with `TELEMETRY_ENABLED=false`
-  or in app settings.
+- Telemetry is off by default and must remain optional; users can enable it in app
+  settings, or hard-disable it with `TELEMETRY_ENABLED=false`.
 - File logging must preserve redaction of common secret patterns.
 - PTY environment passthrough must use the allowlist in `src/main/core/pty/pty-env.ts`.
 - Treat ACP process spawning, SSH command construction, shell escaping, PTY spawning,
@@ -338,6 +338,8 @@ pnpm run test
 - Keep renderer-main calls on typed RPC and typed events. The preload bridge should stay
   small; add direct `window.electronAPI` surface only when an Electron/browser primitive
   cannot fit the RPC/event path.
+- Electron interactive UI must use `[-webkit-app-region:no-drag]` when it can overlap a draggable
+  region. `DialogContent` already applies this; preserve it when changing the shared dialog.
 - Access task and project MobX stores through selectors and task view hooks:
   `getTaskStore`, `asProvisioned`, `taskViewKind`, `getTaskManagerStore`,
   `getProjectStore`, `asMounted`, `useTaskViewKind`, `useWorkspace`,
